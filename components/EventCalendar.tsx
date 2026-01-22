@@ -283,11 +283,11 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
 
   // --- CHANGED LOGIC START ---
   // We now build the URL to point directly to the API Gateway.
-  // Format: API_URL + ?route=/calendar/{userId}.ics
+  // Format: API_URL + ?route=/calendar/{userId}/cal.ics
   const getFeedUrl = () => {
     if (!CONFIG.IS_CLOUD) return `${window.location.origin}/local-demo/calendar.ics`;
     const baseUrl = CONFIG.API_URL;
-    return `${baseUrl}?route=/calendar/${currentUser.id}.ics`;
+    return `${baseUrl}?route=/calendar/${currentUser.id}/cal.ics`;
   };
 
   const handleCopyLink = () => {

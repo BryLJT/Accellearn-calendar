@@ -132,11 +132,17 @@ export const handler = async (event) => {
 
     // --- ICS FEED ROUTE ---
     // Route format: /calendar/{userId}
+    // Updated to support /calendar/{userId}/cal.ics for Apple Calendar compatibility
     if (path.includes('/calendar/') && httpMethod === 'GET') {
-      // Extract User ID. Remove trailing .ics if present for cleanliness
       const parts = path.split('/calendar/');
-      let userId = parts[1];
-      if (userId.endsWith('.ics')) userId = userId.replace('.ics', '');
+      let userId = parts[1]; // e.g. "user123", "user123.ics", "user123/cal.ics"
+
+      // CLEANUP: Extract pure userId from various path formats
+      if (userId.endsWith('/cal.ics')) {
+          userId = userId.substring(0, userId.length - '/cal.ics'.length);
+      } else if (userId.endsWith('.ics')) {
+          userId = userId.substring(0, userId.length - '.ics'.length);
+      }
       
       console.log(`Generating ICS feed for user: ${userId}`);
 
@@ -146,25 +152,36 @@ export const handler = async (event) => {
       const allEvents = response.Items || [];
 
       // 2. Filter Events for this user
-      // Assuming admins can see everything, but for the feed, we usually want specific user data.
-      // Or if the userId is "admin-1", they might want to see everything.
-      // For safety/simplicity in feed: Only show events where user is tagged OR createdBy user.
+      // SAFEGUARD: DynamoDB sometimes returns Sets for string arrays. convert to array.
       const userEvents = allEvents.filter(e => {
-        // Safe check for arrays
-        const tagged = Array.isArray(e.taggedUserIds) ? e.taggedUserIds : [];
+        let tagged = [];
+        if (Array.isArray(e.taggedUserIds)) {
+            tagged = e.taggedUserIds;
+        } else if (e.taggedUserIds && typeof e.taggedUserIds === 'object' && e.taggedUserIds instanceof Set) {
+            tagged = Array.from(e.taggedUserIds);
+        } else if (e.taggedUserIds) {
+            // Fallback for unexpected format
+            tagged = [e.taggedUserIds]; 
+        }
+
         return tagged.includes(userId) || e.createdBy === userId;
       });
 
       // 3. Generate ICS String
       const icsData = generateICS(userEvents);
 
-      // 4. Return as text/calendar
+      // 4. Return as text/calendar with correct feed headers
       return {
         statusCode: 200,
         headers: {
           ...HEADERS,
           "Content-Type": "text/calendar; charset=utf-8",
-          "Content-Disposition": `attachment; filename="accellearn-${userId}.ics"`
+          // CHANGED: Use 'inline' and ensure filename ends in .ics.
+          "Content-Disposition": `inline; filename="accellearn-calendar.ics"`,
+          // CHANGED: Prevent caching so Google Calendar sees updates
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0"
         },
         body: icsData
       };

@@ -60,10 +60,10 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!user) return;
     // COST OPTIMIZATION:
-    // Sync every 90 seconds (90000ms)
+    // Sync every 5 minutes (300000ms)
     const interval = setInterval(() => {
       refreshData();
-    }, isCloudMode ? 90000 : 30000); 
+    }, isCloudMode ? 300000 : 30000); 
     
     return () => clearInterval(interval);
   }, [user, refreshData, isCloudMode]);
