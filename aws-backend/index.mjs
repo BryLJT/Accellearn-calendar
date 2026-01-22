@@ -1,9 +1,15 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, ScanCommand, PutCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
-import { Buffer } from "node:buffer";
+import { Buffer } from "buffer";
 
-const client = new DynamoDBClient({});
-const docClient = DynamoDBDocumentClient.from(client);
+// Initialize outside handler for connection reuse, but handle potential env errors gracefully
+let docClient;
+try {
+  const client = new DynamoDBClient({});
+  docClient = DynamoDBDocumentClient.from(client);
+} catch (e) {
+  console.error("Failed to initialize DynamoDB Client", e);
+}
 
 // Table Names
 const TABLES = {
@@ -21,6 +27,15 @@ const HEADERS = {
 export const handler = async (event) => {
   console.log("Received event:", JSON.stringify(event, null, 2));
 
+  // Fail fast if client didn't init, but return CORS headers so frontend sees the error
+  if (!docClient) {
+    return {
+      statusCode: 500,
+      headers: HEADERS,
+      body: JSON.stringify({ error: "Database Client Initialization Failed. Check AWS Permissions." })
+    };
+  }
+
   try {
     const httpMethod = event.httpMethod || event.requestContext?.http?.method;
     
@@ -29,9 +44,12 @@ export const handler = async (event) => {
       return { statusCode: 200, headers: HEADERS, body: '' };
     }
 
-    let path = event.path || event.rawPath || "";
+    // --- ROUTING LOGIC ---
+    // Priority 1: Check for 'route' query parameter (Single Entry Point strategy)
+    // Priority 2: Use event.path (Standard Proxy strategy)
+    let path = event.queryStringParameters?.route || event.path || event.rawPath || "";
     
-    // Normalize Path
+    // Normalize Path (ensure consistency)
     if (path.endsWith('/login')) path = '/login';
     else if (path.endsWith('/logout')) path = '/logout';
     else if (path.endsWith('/events')) path = '/events';
@@ -39,8 +57,11 @@ export const handler = async (event) => {
     else if (path.includes('/events/')) path = '/events/' + path.split('/events/').pop();
     else if (path.includes('/users/')) path = '/users/' + path.split('/users/').pop();
 
+    console.log(`Processing request: ${httpMethod} ${path}`);
+
     // Parse Body with Base64 support
-    let body = /** @type {any} */ ({});
+    /** @type {any} */
+    let body = {};
     if (event.body) {
       try {
         let bodyStr = event.body;
@@ -50,17 +71,19 @@ export const handler = async (event) => {
         body = JSON.parse(bodyStr);
       } catch (e) {
         console.error("Failed to parse body:", e);
+        // Don't crash, body stays empty object
       }
     }
 
     // --- HEALTH CHECK (Root) ---
+    // Matches "/" or empty string
     if (path === '/' || path === '') {
       return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ status: "API Online", time: new Date().toISOString() }) };
     }
 
     // --- LOGIN ROUTE ---
     if (path === '/login' && httpMethod === 'POST') {
-      const { username, password } = body;
+      const { username, password } = /** @type {any} */ (body);
       const command = new ScanCommand({ TableName: TABLES.USERS });
       const response = await docClient.send(command);
       const user = response.Items?.find(u => u.username === username && u.password === password);

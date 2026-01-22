@@ -35,9 +35,13 @@ if (isUsingMock) {
 }
 
 async function apiFetch(endpoint: string, options: RequestInit = {}) {
-  // Ensure we don't double slashes if the base URL ends with one
+  // Normalize Base URL
   const baseUrl = API_BASE_URL.replace(/\/$/, '');
-  const url = `${baseUrl}${endpoint}`;
+  
+  // SINGLE ENTRY POINT STRATEGY:
+  // Instead of appending paths (e.g. /login), we pass the route as a query parameter.
+  // This ensures we always hit the 'ANY /' route in API Gateway, bypassing 404 errors for unconfigured proxy routes.
+  const url = `${baseUrl}?route=${encodeURIComponent(endpoint)}`;
   
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
