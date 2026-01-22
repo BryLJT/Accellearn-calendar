@@ -1,6 +1,6 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, ScanCommand, PutCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
-import { Buffer } from "buffer";
+import { Buffer } from "node:buffer";
 
 // Initialize outside handler for connection reuse
 let docClient;
@@ -62,6 +62,7 @@ export const handler = async (event) => {
       try {
         let bodyStr = ev.body;
         if (ev.isBase64Encoded) {
+          // Use global Buffer
           bodyStr = Buffer.from(ev.body, 'base64').toString('utf-8');
         }
         return JSON.parse(bodyStr);
