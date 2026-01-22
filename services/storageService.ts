@@ -1,13 +1,19 @@
 import { User, CalendarEvent, UserRole } from '../types';
 
+// In production (AWS), this would be your actual API URL
+// This can be injected via a script tag or environment variable
+const API_BASE_URL = (window as any).CONFIG_API_URL || ''; 
+
 const USERS_KEY = 'teamsync_users';
 const EVENTS_KEY = 'teamsync_events';
 const CURRENT_USER_KEY = 'teamsync_current_user';
 
-// Utility to simulate network latency
+const isUsingMock = !API_BASE_URL;
+
+// Utility to simulate network latency for mock mode
 const delay = (ms: number = 200) => new Promise(resolve => setTimeout(resolve, ms));
 
-const initData = () => {
+const initMockData = () => {
   if (!localStorage.getItem(USERS_KEY)) {
     const defaultUsers: User[] = [
       { id: 'admin-1', username: 'admin', name: 'System Admin', role: UserRole.ADMIN, password: 'admin', avatarUrl: 'https://picsum.photos/seed/admin/200' },
@@ -21,16 +27,46 @@ const initData = () => {
   }
 };
 
-initData();
+if (isUsingMock) {
+  initMockData();
+}
+
+/**
+ * Generic Fetch Wrapper with timeout and error handling
+ */
+async function apiFetch(endpoint: string, options: RequestInit = {}) {
+  try {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
+    if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+    return response.json();
+  } catch (error) {
+    console.error("Cloud Connection Failed:", error);
+    throw error;
+  }
+}
 
 export const storageService = {
   getUsers: async (): Promise<User[]> => {
+    if (!isUsingMock) return apiFetch('/users');
     await delay();
     const data = localStorage.getItem(USERS_KEY);
     return data ? JSON.parse(data) : [];
   },
 
   saveUser: async (user: User): Promise<void> => {
+    if (!isUsingMock) {
+      await apiFetch('/users', {
+        method: 'POST',
+        body: JSON.stringify(user)
+      });
+      return;
+    }
     await delay();
     const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
     const index = users.findIndex((u: User) => u.id === user.id);
@@ -41,7 +77,6 @@ export const storageService = {
     }
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
 
-    // If the updated user is the current logged in user, update their session too
     const currentUser = storageService.getCurrentUser();
     if (currentUser && currentUser.id === user.id) {
       localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
@@ -49,18 +84,30 @@ export const storageService = {
   },
 
   deleteUser: async (userId: string): Promise<void> => {
+    if (!isUsingMock) {
+      await apiFetch(`/users/${userId}`, { method: 'DELETE' });
+      return;
+    }
     await delay();
     const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
     localStorage.setItem(USERS_KEY, JSON.stringify(users.filter((u: User) => u.id !== userId)));
   },
 
   getEvents: async (): Promise<CalendarEvent[]> => {
+    if (!isUsingMock) return apiFetch('/events');
     await delay();
     const data = localStorage.getItem(EVENTS_KEY);
     return data ? JSON.parse(data) : [];
   },
 
   saveEvent: async (event: CalendarEvent): Promise<void> => {
+    if (!isUsingMock) {
+      await apiFetch('/events', {
+        method: 'POST',
+        body: JSON.stringify(event)
+      });
+      return;
+    }
     await delay();
     const events = JSON.parse(localStorage.getItem(EVENTS_KEY) || '[]');
     const index = events.findIndex((e: CalendarEvent) => e.id === event.id);
@@ -73,12 +120,28 @@ export const storageService = {
   },
 
   deleteEvent: async (eventId: string): Promise<void> => {
+    if (!isUsingMock) {
+      await apiFetch(`/events/${eventId}`, { method: 'DELETE' });
+      return;
+    }
     await delay();
     const events = JSON.parse(localStorage.getItem(EVENTS_KEY) || '[]');
     localStorage.setItem(EVENTS_KEY, JSON.stringify(events.filter((e: CalendarEvent) => e.id !== eventId)));
   },
 
   login: async (username: string, password: string): Promise<User | null> => {
+    if (!isUsingMock) {
+      try {
+        const user = await apiFetch('/login', {
+          method: 'POST',
+          body: JSON.stringify({ username, password })
+        });
+        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+        return user;
+      } catch {
+        return null;
+      }
+    }
     await delay(400);
     const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
     const user = users.find((u: User) => u.username === username && u.password === password);
@@ -91,6 +154,13 @@ export const storageService = {
 
   logout: async (): Promise<void> => {
     localStorage.removeItem(CURRENT_USER_KEY);
+    if (!isUsingMock) {
+      try {
+        await apiFetch('/logout', { method: 'POST' });
+      } catch (e) {
+        // Silently fail on logout error
+      }
+    }
   },
 
   getCurrentUser: (): User | null => {

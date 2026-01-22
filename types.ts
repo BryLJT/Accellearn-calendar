@@ -1,3 +1,4 @@
+
 export enum UserRole {
   ADMIN = 'ADMIN',
   USER = 'USER'
@@ -8,8 +9,10 @@ export interface User {
   username: string;
   name: string;
   role: UserRole;
-  password?: string; // In a real app, never store plain text. Using simple mock auth here.
+  password?: string; // In production, this will be a hashed string stored in DynamoDB
   avatarUrl?: string;
+  createdAt?: string;
+  type?: 'user'; // Useful for DynamoDB identification
 }
 
 export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly';
@@ -23,10 +26,11 @@ export interface CalendarEvent {
   endTime: string; // HH:mm
   taggedUserIds: string[];
   createdBy: string;
-  adminColor?: string; // Color seen by admins
-  userColor?: string; // Color seen by users
+  adminColor?: string;
+  userColor?: string;
   recurrence?: RecurrenceType;
   tags?: string[];
+  type?: 'event'; // Useful for DynamoDB identification
 }
 
 export interface AIEventParseResult {

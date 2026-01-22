@@ -4,7 +4,7 @@ import { storageService } from './services/storageService';
 import { EventCalendar } from './components/EventCalendar';
 import { UserManagement } from './components/UserManagement';
 import { Button } from './components/Button';
-import { LayoutDashboard, Users, LogOut, Calendar as CalendarIcon, Loader2, RefreshCw } from 'lucide-react';
+import { LayoutDashboard, Users, LogOut, Calendar as CalendarIcon, Loader2, RefreshCw, Cloud, CloudOff, WifiOff, AlertCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -14,7 +14,11 @@ const App: React.FC = () => {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [lastSync, setLastSync] = useState<Date>(new Date());
+  const [syncError, setSyncError] = useState(false);
   
+  // Detection for Cloud vs Local mode
+  const isCloudMode = !!(window as any).CONFIG_API_URL;
+
   // Login State
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -22,15 +26,22 @@ const App: React.FC = () => {
 
   const refreshData = useCallback(async (showLoading = false) => {
     if (showLoading) setIsActionLoading(true);
-    const [fetchedUsers, fetchedEvents] = await Promise.all([
-      storageService.getUsers(),
-      storageService.getEvents()
-    ]);
-    setAllUsers(fetchedUsers);
-    setEvents(fetchedEvents);
-    setLastSync(new Date());
-    if (showLoading) setIsActionLoading(false);
-  }, []);
+    try {
+      const [fetchedUsers, fetchedEvents] = await Promise.all([
+        storageService.getUsers(),
+        storageService.getEvents()
+      ]);
+      setAllUsers(fetchedUsers);
+      setEvents(fetchedEvents);
+      setLastSync(new Date());
+      setSyncError(false);
+    } catch (err) {
+      console.error("Failed to sync data:", err);
+      if (isCloudMode) setSyncError(true);
+    } finally {
+      if (showLoading) setIsActionLoading(false);
+    }
+  }, [isCloudMode]);
 
   useEffect(() => {
     const checkSession = async () => {
@@ -44,14 +55,14 @@ const App: React.FC = () => {
     checkSession();
   }, [refreshData]);
 
-  // "Live Update" Simulation: Poll every 10 seconds
+  // Sync Logic
   useEffect(() => {
     if (!user) return;
     const interval = setInterval(() => {
       refreshData();
-    }, 10000);
+    }, isCloudMode ? 15000 : 30000); // Slower polling to be kind to serverless limits
     return () => clearInterval(interval);
-  }, [user, refreshData]);
+  }, [user, refreshData, isCloudMode]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,30 +90,51 @@ const App: React.FC = () => {
 
   const handleSaveUser = async (userToSave: User) => {
     setIsActionLoading(true);
-    await storageService.saveUser(userToSave);
-    await refreshData();
-    setIsActionLoading(false);
+    try {
+      await storageService.saveUser(userToSave);
+      await refreshData();
+    } catch {
+      alert("Failed to save user. Check cloud connection.");
+    } finally {
+      setIsActionLoading(false);
+    }
   };
 
   const handleDeleteUser = async (id: string) => {
+    if (!confirm("Are you sure? This cannot be undone.")) return;
     setIsActionLoading(true);
-    await storageService.deleteUser(id);
-    await refreshData();
-    setIsActionLoading(false);
+    try {
+      await storageService.deleteUser(id);
+      await refreshData();
+    } catch {
+      alert("Failed to delete user.");
+    } finally {
+      setIsActionLoading(false);
+    }
   };
 
   const handleAddEvent = async (event: CalendarEvent) => {
     setIsActionLoading(true);
-    await storageService.saveEvent(event);
-    await refreshData();
-    setIsActionLoading(false);
+    try {
+      await storageService.saveEvent(event);
+      await refreshData();
+    } catch {
+      alert("Failed to save event. Check cloud connection.");
+    } finally {
+      setIsActionLoading(false);
+    }
   };
 
   const handleDeleteEvent = async (id: string) => {
     setIsActionLoading(true);
-    await storageService.deleteEvent(id);
-    await refreshData();
-    setIsActionLoading(false);
+    try {
+      await storageService.deleteEvent(id);
+      await refreshData();
+    } catch {
+      alert("Failed to delete event.");
+    } finally {
+      setIsActionLoading(false);
+    }
   };
 
   if (isInitialLoad) {
@@ -117,18 +149,27 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100">
-          <div className="bg-indigo-600 p-8 text-center">
+          <div className="bg-indigo-600 p-8 text-center relative">
+            <div className="absolute top-4 right-4">
+               {isCloudMode ? 
+                <div title="Connected to Cloud" className="bg-emerald-500/20 text-emerald-100 p-1.5 rounded-full"><Cloud size={16} /></div> :
+                <div title="Local Demo Mode" className="bg-amber-500/20 text-amber-100 p-1.5 rounded-full"><CloudOff size={16} /></div>
+               }
+            </div>
             <div className="mx-auto w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mb-4 backdrop-blur-sm">
               <CalendarIcon className="text-white" size={32} />
             </div>
             <h1 className="text-2xl font-bold text-white mb-2">TeamSync Calendar</h1>
-            <p className="text-indigo-100 text-sm">Self-hosted team collaboration</p>
+            <p className="text-indigo-100 text-sm">
+              {isCloudMode ? 'Production Access' : 'Internal Demo Instance'}
+            </p>
           </div>
           
           <div className="p-8">
             <form onSubmit={handleLogin} className="space-y-5">
               {loginError && (
-                <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg border border-red-100">
+                <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg border border-red-100 flex items-center">
+                  <AlertCircle size={16} className="mr-2 shrink-0" />
                   {loginError}
                 </div>
               )}
@@ -137,6 +178,7 @@ const App: React.FC = () => {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Username</label>
                 <input 
                   type="text" 
+                  autoComplete="username"
                   value={username}
                   disabled={isActionLoading}
                   onChange={(e) => setUsername(e.target.value)}
@@ -148,6 +190,7 @@ const App: React.FC = () => {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
                 <input 
                   type="password" 
+                  autoComplete="current-password"
                   value={password}
                   disabled={isActionLoading}
                   onChange={(e) => setPassword(e.target.value)}
@@ -175,12 +218,28 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {syncError && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top-4">
+           <div className="bg-red-600 text-white px-4 py-2 rounded-full shadow-xl flex items-center space-x-2 text-sm font-medium">
+             <WifiOff size={16} />
+             <span>Offline: Reconnecting to Cloud...</span>
+             <button onClick={() => refreshData(true)} className="ml-2 underline hover:text-white/80">Retry</button>
+           </div>
+        </div>
+      )}
+
       <aside className="bg-slate-900 text-white w-full md:w-64 flex-shrink-0 flex flex-col">
-        <div className="p-6 border-b border-slate-800 flex items-center space-x-3">
-          <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center">
-            <CalendarIcon size={18} className="text-white" />
+        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center">
+              <CalendarIcon size={18} className="text-white" />
+            </div>
+            <span className="font-bold text-lg tracking-tight">TeamSync</span>
           </div>
-          <span className="font-bold text-lg tracking-tight">TeamSync</span>
+          {isCloudMode ? 
+            <Cloud size={14} className={syncError ? 'text-red-500' : 'text-emerald-500'} /> : 
+            <CloudOff size={14} className="text-amber-500" />
+          }
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
@@ -210,8 +269,8 @@ const App: React.FC = () => {
               <div className="min-w-0">
                 <p className="text-sm font-medium text-white truncate">{user.name}</p>
                 <div className="flex items-center text-[10px] text-slate-500">
-                  <RefreshCw size={10} className="mr-1 animate-pulse" />
-                  Synced {lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  <RefreshCw size={10} className={`mr-1 ${isActionLoading ? 'animate-spin' : ''}`} />
+                  {syncError ? 'Sync Failed' : `Synced ${lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
                 </div>
               </div>
             </div>
