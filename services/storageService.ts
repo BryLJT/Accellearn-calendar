@@ -1,24 +1,28 @@
-import { User, CalendarEvent, UserRole } from '../types';
 
-// In production (AWS), this would be your actual API URL
-// This can be injected via a script tag or environment variable
-const API_BASE_URL = (window as any).CONFIG_API_URL || ''; 
+import { User, CalendarEvent, UserRole } from '../types';
+import { CONFIG } from './config';
+
+/**
+ * PHASE 3 COMPLETE: AWS API GATEWAY CONNECTION
+ * Connected to AWS Lambda via API Gateway
+ */
+// We use the URL from our central config file
+const API_BASE_URL = CONFIG.API_URL;
 
 const USERS_KEY = 'teamsync_users';
 const EVENTS_KEY = 'teamsync_events';
 const CURRENT_USER_KEY = 'teamsync_current_user';
 
-const isUsingMock = !API_BASE_URL;
+// If API_BASE_URL is present, we are in Cloud Mode.
+const isUsingMock = !API_BASE_URL || API_BASE_URL.length === 0;
 
-// Utility to simulate network latency for mock mode
 const delay = (ms: number = 200) => new Promise(resolve => setTimeout(resolve, ms));
 
 const initMockData = () => {
   if (!localStorage.getItem(USERS_KEY)) {
     const defaultUsers: User[] = [
       { id: 'admin-1', username: 'admin', name: 'System Admin', role: UserRole.ADMIN, password: 'admin', avatarUrl: 'https://picsum.photos/seed/admin/200' },
-      { id: 'user-1', username: 'user', name: 'Jane Doe', role: UserRole.USER, password: 'user', avatarUrl: 'https://picsum.photos/seed/jane/200' },
-      { id: 'user-2', username: 'user2', name: 'Michael Chen', role: UserRole.USER, password: 'user2', avatarUrl: 'https://picsum.photos/seed/michael/200' }
+      { id: 'user-1', username: 'user', name: 'Jane Doe', role: UserRole.USER, password: 'user', avatarUrl: 'https://picsum.photos/seed/jane/200' }
     ];
     localStorage.setItem(USERS_KEY, JSON.stringify(defaultUsers));
   }
@@ -31,22 +35,28 @@ if (isUsingMock) {
   initMockData();
 }
 
-/**
- * Generic Fetch Wrapper with timeout and error handling
- */
 async function apiFetch(endpoint: string, options: RequestInit = {}) {
+  // Ensure we don't double slashes if the base URL ends with one
+  const baseUrl = API_BASE_URL.replace(/\/$/, '');
+  const url = `${baseUrl}${endpoint}`;
+  
   try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const response = await fetch(url, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
         ...options.headers,
       },
     });
-    if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API Error (${response.status}): ${errorText || response.statusText}`);
+    }
+
     return response.json();
   } catch (error) {
-    console.error("Cloud Connection Failed:", error);
+    console.error(`Fetch Failed for ${url}:`, error);
     throw error;
   }
 }
@@ -76,11 +86,6 @@ export const storageService = {
       users.push(user);
     }
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
-
-    const currentUser = storageService.getCurrentUser();
-    if (currentUser && currentUser.id === user.id) {
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
-    }
   },
 
   deleteUser: async (userId: string): Promise<void> => {
@@ -157,9 +162,7 @@ export const storageService = {
     if (!isUsingMock) {
       try {
         await apiFetch('/logout', { method: 'POST' });
-      } catch (e) {
-        // Silently fail on logout error
-      }
+      } catch (e) {}
     }
   },
 

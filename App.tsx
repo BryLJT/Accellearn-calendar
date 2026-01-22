@@ -1,9 +1,11 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { User, UserRole, CalendarEvent } from './types';
 import { storageService } from './services/storageService';
 import { EventCalendar } from './components/EventCalendar';
 import { UserManagement } from './components/UserManagement';
 import { Button } from './components/Button';
+import { CONFIG } from './services/config';
 import { LayoutDashboard, Users, LogOut, Calendar as CalendarIcon, Loader2, RefreshCw, Cloud, CloudOff, WifiOff, AlertCircle } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -17,7 +19,7 @@ const App: React.FC = () => {
   const [syncError, setSyncError] = useState(false);
   
   // Detection for Cloud vs Local mode
-  const isCloudMode = !!(window as any).CONFIG_API_URL;
+  const isCloudMode = CONFIG.IS_CLOUD;
 
   // Login State
   const [username, setUsername] = useState('');
