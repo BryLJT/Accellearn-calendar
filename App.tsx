@@ -50,8 +50,8 @@ const App: React.FC = () => {
     setPassword('');
   };
 
-  const handleAddUser = (newUser: User) => {
-    storageService.saveUser(newUser);
+  const handleSaveUser = (userToSave: User) => {
+    storageService.saveUser(userToSave);
     refreshData();
   };
 
@@ -191,7 +191,8 @@ const App: React.FC = () => {
           {activeTab === 'users' && user.role === UserRole.ADMIN && (
             <UserManagement 
               users={allUsers}
-              onAddUser={handleAddUser}
+              onAddUser={handleSaveUser}
+              onUpdateUser={handleSaveUser}
               onDeleteUser={handleDeleteUser}
             />
           )}

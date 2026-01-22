@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
 import { Button } from './Button';
-import { Trash2, UserPlus, Shield, User as UserIcon } from 'lucide-react';
+import { Trash2, UserPlus, Shield, User as UserIcon, KeyRound } from 'lucide-react';
 import { Modal } from './Modal';
 
 interface UserManagementProps {
   users: User[];
   onAddUser: (user: User) => void;
+  onUpdateUser: (user: User) => void;
   onDeleteUser: (userId: string) => void;
 }
 
-export const UserManagement: React.FC<UserManagementProps> = ({ users, onAddUser, onDeleteUser }) => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
+export const UserManagement: React.FC<UserManagementProps> = ({ users, onAddUser, onUpdateUser, onDeleteUser }) => {
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  
   const [newUser, setNewUser] = useState({
     name: '',
     username: '',
@@ -19,15 +23,36 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, onAddUser
     role: UserRole.USER
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [newPassword, setNewPassword] = useState('');
+
+  const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onAddUser({
       ...newUser,
       id: crypto.randomUUID(),
       avatarUrl: `https://picsum.photos/seed/${newUser.username}/200`
     });
-    setIsModalOpen(false);
+    setIsAddModalOpen(false);
     setNewUser({ name: '', username: '', password: '', role: UserRole.USER });
+  };
+
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedUser && newPassword) {
+      onUpdateUser({
+        ...selectedUser,
+        password: newPassword
+      });
+      setIsPasswordModalOpen(false);
+      setSelectedUser(null);
+      setNewPassword('');
+    }
+  };
+
+  const openPasswordModal = (user: User) => {
+    setSelectedUser(user);
+    setNewPassword('');
+    setIsPasswordModalOpen(true);
   };
 
   return (
@@ -35,9 +60,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, onAddUser
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Team Members</h2>
-          <p className="text-slate-500">Manage access and roles.</p>
+          <p className="text-slate-500">Manage access, roles, and security.</p>
         </div>
-        <Button onClick={() => setIsModalOpen(true)}>
+        <Button onClick={() => setIsAddModalOpen(true)}>
           <UserPlus size={16} className="mr-2" />
           Add Member
         </Button>
@@ -62,25 +87,35 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, onAddUser
                 </div>
               </div>
             </div>
-            {user.username !== 'admin' && (
+            <div className="flex items-center space-x-1">
               <button 
-                onClick={() => onDeleteUser(user.id)}
-                className="text-slate-400 hover:text-red-500 transition-colors"
-                title="Delete user"
+                onClick={() => openPasswordModal(user)}
+                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                title="Change Password"
               >
-                <Trash2 size={16} />
+                <KeyRound size={16} />
               </button>
-            )}
+              {user.username !== 'admin' && (
+                <button 
+                  onClick={() => onDeleteUser(user.id)}
+                  className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Delete user"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>
 
+      {/* Add User Modal */}
       <Modal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
         title="Add New Member"
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleAddSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
             <input
@@ -127,6 +162,34 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, onAddUser
           </div>
           <div className="flex justify-end pt-4">
             <Button type="submit">Create Account</Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Change Password Modal */}
+      <Modal
+        isOpen={isPasswordModalOpen}
+        onClose={() => setIsPasswordModalOpen(false)}
+        title={`Change Password for ${selectedUser?.name}`}
+      >
+        <form onSubmit={handlePasswordSubmit} className="space-y-4">
+          <div className="bg-amber-50 text-amber-800 text-sm p-3 rounded-lg border border-amber-100 mb-4">
+            Warning: Changing the password will require the user to log in with the new credentials immediately.
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">New Password</label>
+            <input
+              required
+              type="password"
+              value={newPassword}
+              onChange={e => setNewPassword(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white"
+              placeholder="Enter new password"
+            />
+          </div>
+          <div className="flex justify-end pt-4">
+            <Button type="button" variant="ghost" onClick={() => setIsPasswordModalOpen(false)} className="mr-2">Cancel</Button>
+            <Button type="submit">Update Password</Button>
           </div>
         </form>
       </Modal>

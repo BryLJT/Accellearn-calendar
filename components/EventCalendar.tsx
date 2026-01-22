@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { CalendarEvent, User, UserRole, RecurrenceType } from '../types';
-import { ChevronLeft, ChevronRight, Clock, Plus, Wand2, Trash2, Users, Calendar as CalendarIcon, Palette, Repeat, Tag, Filter, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Plus, Wand2, Trash2, Users, Calendar as CalendarIcon, Palette, Repeat, Tag, Filter, X, Download, Share2, Link as LinkIcon, Check } from 'lucide-react';
 import { Button } from './Button';
 import { Modal } from './Modal';
 import { parseEventWithAI } from '../services/geminiService';
+import { generateICS } from '../services/icsService';
 
 interface EventCalendarProps {
   events: CalendarEvent[];
@@ -34,7 +35,9 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
 }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
   
   // Filtering State
   const [filterTags, setFilterTags] = useState<string[]>([]);
@@ -84,7 +87,7 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
     return Array.from(tags).sort();
   }, [events]);
 
-  // Core Logic: Generate instances of recurring events for the current view
+  // Logic: Generate instances of recurring events for the current view
   const processedEvents = useMemo(() => {
     let result: CalendarEvent[] = [];
     const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
@@ -273,6 +276,37 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
     }
   };
 
+  const handleExportICS = () => {
+    // 1. Filter raw events based on permissions
+    const exportableEvents = events.filter(e => {
+      // Admin gets everything
+      if (currentUser.role === UserRole.ADMIN) return true;
+      // Users get events they are tagged in
+      return e.taggedUserIds.includes(currentUser.id);
+    });
+
+    // 2. Generate ICS content
+    const icsContent = generateICS(exportableEvents);
+
+    // 3. Create blob and download
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'teamsync-calendar.ics');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleCopyLink = () => {
+    // Simulating a subscription link
+    const dummyUrl = `${window.location.origin}/feed/calendar/${currentUser.id}.ics`;
+    navigator.clipboard.writeText(dummyUrl);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
   const getEventStyle = (event: CalendarEvent) => {
     const colorKey = currentUser.role === UserRole.ADMIN 
       ? (event.adminColor || 'indigo') 
@@ -321,7 +355,12 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
               {currentUser.role === UserRole.ADMIN ? 'Manage team schedule' : 'Your upcoming events'}
             </p>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" onClick={() => setIsShareModalOpen(true)}>
+              <Share2 size={16} className="mr-2 text-slate-500" />
+              Export
+            </Button>
+            <div className="h-6 w-px bg-slate-300 mx-1 hidden md:block"></div>
             <Button variant="secondary" onClick={() => setIsFilterOpen(!isFilterOpen)}>
               <Filter size={16} className={`mr-2 ${isFilterOpen ? 'text-indigo-600' : 'text-slate-500'}`} />
               Filters
@@ -480,6 +519,49 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
           })}
         </div>
       </div>
+
+      {/* Share Modal */}
+      <Modal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        title="Export Calendar"
+      >
+        <div className="space-y-6">
+          <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-100">
+            <h4 className="font-medium text-indigo-900 mb-2 flex items-center">
+              <Download size={18} className="mr-2" />
+              Download .ICS File
+            </h4>
+            <p className="text-sm text-indigo-700 mb-4">
+              Download a snapshot of your current calendar. You can import this file into Google Calendar, Outlook, or Apple Calendar.
+            </p>
+            <Button onClick={handleExportICS} className="w-full">
+              Download File
+            </Button>
+          </div>
+
+          <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+            <h4 className="font-medium text-slate-900 mb-2 flex items-center">
+              <LinkIcon size={18} className="mr-2" />
+              Subscription Link (Live Updates)
+            </h4>
+            <p className="text-sm text-slate-600 mb-3">
+              To subscribe for live updates, your calendar client needs a persistent URL.
+            </p>
+            <div className="flex items-center space-x-2">
+              <code className="flex-1 p-2 bg-white border border-slate-300 rounded text-xs text-slate-500 overflow-hidden text-ellipsis whitespace-nowrap">
+                {`${window.location.origin}/feed/calendar/${currentUser.id}.ics`}
+              </code>
+              <Button variant="secondary" onClick={handleCopyLink} className="shrink-0">
+                {copiedLink ? <Check size={16} className="text-green-600" /> : <span className="text-xs">Copy</span>}
+              </Button>
+            </div>
+            <p className="text-xs text-slate-400 mt-2 italic">
+              * Note: In this demo environment, this URL is a placeholder. A real backend is required to serve the live ICS feed.
+            </p>
+          </div>
+        </div>
+      </Modal>
 
       {/* View Event Details Modal */}
       <Modal
