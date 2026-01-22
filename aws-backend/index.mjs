@@ -11,10 +11,10 @@ try {
   console.error("Failed to initialize DynamoDB Client", e);
 }
 
-// Table Names
+// Table Names - Updated to match your specific tables
 const TABLES = {
-  EVENTS: "TeamSync_Events",
-  USERS: "TeamSync_Users"
+  EVENTS: "accellearn_calendar",
+  USERS: "accellearn_users_table"
 };
 
 const HEADERS = {
@@ -27,8 +27,9 @@ const HEADERS = {
 export const handler = async (event) => {
   console.log("Received event:", JSON.stringify(event, null, 2));
 
-  // Fail fast if client didn't init, but return CORS headers so frontend sees the error
+  // Fail fast if client didn't init
   if (!docClient) {
+    console.error("DynamoDB Client not initialized");
     return {
       statusCode: 500,
       headers: HEADERS,
@@ -38,18 +39,9 @@ export const handler = async (event) => {
 
   try {
     const httpMethod = event.httpMethod || event.requestContext?.http?.method;
-    
-    // Handle Preflight
-    if (httpMethod === 'OPTIONS') {
-      return { statusCode: 200, headers: HEADERS, body: '' };
-    }
-
-    // --- ROUTING LOGIC ---
-    // Priority 1: Check for 'route' query parameter (Single Entry Point strategy)
-    // Priority 2: Use event.path (Standard Proxy strategy)
     let path = event.queryStringParameters?.route || event.path || event.rawPath || "";
     
-    // Normalize Path (ensure consistency)
+    // Normalize Path
     if (path.endsWith('/login')) path = '/login';
     else if (path.endsWith('/logout')) path = '/logout';
     else if (path.endsWith('/events')) path = '/events';
@@ -59,7 +51,7 @@ export const handler = async (event) => {
 
     console.log(`Processing request: ${httpMethod} ${path}`);
 
-    // Parse Body with Base64 support
+    // Parse Body
     let body = /** @type {any} */ ({});
     if (event.body) {
       try {
@@ -70,45 +62,57 @@ export const handler = async (event) => {
         body = JSON.parse(bodyStr);
       } catch (e) {
         console.error("Failed to parse body:", e);
-        // Don't crash, body stays empty object
       }
     }
 
-    // --- HEALTH CHECK (Root) ---
-    // Matches "/" or empty string
+    // --- HEALTH CHECK ---
     if (path === '/' || path === '') {
-      return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ status: "API Online", time: new Date().toISOString() }) };
+      return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ status: "API Online" }) };
     }
 
     // --- LOGIN ROUTE ---
     if (path === '/login' && httpMethod === 'POST') {
       const { username, password } = body;
+      console.log(`Attempting login for user: ${username}`);
+
+      // 1. Fetch all users
       const command = new ScanCommand({ TableName: TABLES.USERS });
       const response = await docClient.send(command);
-      
       const users = response.Items || [];
+      console.log(`Found ${users.length} users in database.`);
 
-      // SPECIAL CASE: First Run / Empty DB
-      // If DB is empty, and user tries to log in as admin/admin, create the user and let them in.
-      if (users.length === 0 && username === 'admin' && password === 'admin') {
-         const defaultAdmin = { 
-             id: 'admin-1', 
-             username: 'admin', 
-             password: 'admin', 
-             name: 'System Admin', 
-             role: 'ADMIN', 
-             avatarUrl: 'https://picsum.photos/seed/admin/200' 
-         };
-         await docClient.send(new PutCommand({ TableName: TABLES.USERS, Item: defaultAdmin }));
-         return { statusCode: 200, headers: HEADERS, body: JSON.stringify(defaultAdmin) };
+      // 2. SPECIAL CASE: First Run / Empty DB
+      // If the DB has 0 users, we AUTOMATICALLY create the admin user so you can log in.
+      if (users.length === 0) {
+        console.log("Database is empty. Checking if this is the initial admin login...");
+        if (username === 'admin' && password === 'admin') {
+           console.log("Creating default admin user...");
+           const defaultAdmin = { 
+               id: 'admin-1', 
+               username: 'admin', 
+               password: 'admin', 
+               name: 'System Admin', 
+               role: 'ADMIN', 
+               avatarUrl: 'https://picsum.photos/seed/admin/200' 
+           };
+           await docClient.send(new PutCommand({ TableName: TABLES.USERS, Item: defaultAdmin }));
+           console.log("Default admin created successfully.");
+           return { statusCode: 200, headers: HEADERS, body: JSON.stringify(defaultAdmin) };
+        } else {
+           console.log("Empty DB, but credentials were not admin/admin.");
+        }
       }
 
+      // 3. Normal Login Check
       const user = users.find(u => u.username === username && u.password === password);
 
       if (user) {
+        console.log("Login successful.");
         return { statusCode: 200, headers: HEADERS, body: JSON.stringify(user) };
       }
-      return { statusCode: 401, headers: HEADERS, body: JSON.stringify({ error: "Invalid credentials" }) };
+      
+      console.log("Login failed: Invalid credentials.");
+      return { statusCode: 401, headers: HEADERS, body: JSON.stringify({ error: "Invalid credentials. If this is your first time, use admin/admin." }) };
     }
 
     // --- EVENTS ROUTES ---
@@ -137,21 +141,7 @@ export const handler = async (event) => {
       if (httpMethod === 'GET') {
         const command = new ScanCommand({ TableName: TABLES.USERS });
         const response = await docClient.send(command);
-        
-        if (!response.Items || response.Items.length === 0) {
-           const defaultAdmin = { 
-             id: 'admin-1', 
-             username: 'admin', 
-             password: 'admin', 
-             name: 'System Admin', 
-             role: 'ADMIN', 
-             avatarUrl: 'https://picsum.photos/seed/admin/200' 
-           };
-           await docClient.send(new PutCommand({ TableName: TABLES.USERS, Item: defaultAdmin }));
-           return { statusCode: 200, headers: HEADERS, body: JSON.stringify([defaultAdmin]) };
-        }
-        
-        return { statusCode: 200, headers: HEADERS, body: JSON.stringify(response.Items) };
+        return { statusCode: 200, headers: HEADERS, body: JSON.stringify(response.Items || []) };
       }
       if (httpMethod === 'POST') {
         const command = new PutCommand({ TableName: TABLES.USERS, Item: body });
@@ -167,7 +157,7 @@ export const handler = async (event) => {
       return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ success: true }) };
     }
 
-    // --- LOGOUT ROUTE ---
+    // --- LOGOUT ---
     if (path === '/logout') {
       return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ success: true }) };
     }
