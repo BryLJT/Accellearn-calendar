@@ -144,7 +144,7 @@ const App: React.FC = () => {
   if (isInitialLoad) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
+        <Loader2 className="w-10 h-10 text-purple-600 animate-spin" />
       </div>
     );
   }
@@ -153,7 +153,7 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100">
-          <div className="bg-indigo-600 p-8 text-center relative">
+          <div className="bg-purple-600 p-8 text-center relative">
             <div className="absolute top-4 right-4">
                {isCloudMode ? 
                 <div title="Connected to Cloud" className="bg-emerald-500/20 text-emerald-100 p-1.5 rounded-full"><Cloud size={16} /></div> :
@@ -163,8 +163,8 @@ const App: React.FC = () => {
             <div className="mx-auto w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mb-4 backdrop-blur-sm">
               <CalendarIcon className="text-white" size={32} />
             </div>
-            <h1 className="text-2xl font-bold text-white mb-2">TeamSync Calendar</h1>
-            <p className="text-indigo-100 text-sm">
+            <h1 className="text-2xl font-bold text-white mb-2">Accellearn Calendar</h1>
+            <p className="text-purple-100 text-sm">
               {isCloudMode ? 'Production Access' : 'Internal Demo Instance'}
             </p>
           </div>
@@ -186,7 +186,7 @@ const App: React.FC = () => {
                   value={username}
                   disabled={isActionLoading}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none bg-white"
                 />
               </div>
               
@@ -198,7 +198,7 @@ const App: React.FC = () => {
                   value={password}
                   disabled={isActionLoading}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none bg-white"
                 />
               </div>
 
@@ -217,7 +217,7 @@ const App: React.FC = () => {
       {isActionLoading && (
         <div className="fixed inset-0 bg-slate-900/10 backdrop-blur-[1px] z-[9999] flex items-center justify-center">
            <div className="bg-white p-4 rounded-full shadow-lg">
-             <Loader2 className="w-6 h-6 text-indigo-600 animate-spin" />
+             <Loader2 className="w-6 h-6 text-purple-600 animate-spin" />
            </div>
         </div>
       )}
@@ -235,10 +235,10 @@ const App: React.FC = () => {
       <aside className="bg-slate-900 text-white w-full md:w-64 flex-shrink-0 flex flex-col">
         <div className="p-6 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
               <CalendarIcon size={18} className="text-white" />
             </div>
-            <span className="font-bold text-lg tracking-tight">TeamSync</span>
+            <span className="font-bold text-lg tracking-tight">Accellearn</span>
           </div>
           {isCloudMode ? 
             <Cloud size={14} className={syncError ? 'text-red-500' : 'text-emerald-500'} /> : 
@@ -249,7 +249,7 @@ const App: React.FC = () => {
         <nav className="flex-1 p-4 space-y-2">
           <button 
             onClick={() => setActiveTab('calendar')}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'calendar' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'calendar' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
           >
             <LayoutDashboard size={20} />
             <span className="font-medium">Calendar</span>
@@ -258,7 +258,7 @@ const App: React.FC = () => {
           {user.role === UserRole.ADMIN && (
             <button 
               onClick={() => setActiveTab('users')}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'users' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'users' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
             >
               <Users size={20} />
               <span className="font-medium">Team Members</span>

@@ -80,7 +80,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, onAddUser
               <div>
                 <h3 className="font-semibold text-slate-900">{user.name}</h3>
                 <div className="flex items-center text-xs text-slate-500 space-x-1">
-                  {user.role === UserRole.ADMIN ? <Shield size={12} className="text-indigo-500" /> : <UserIcon size={12} />}
+                  {user.role === UserRole.ADMIN ? <Shield size={12} className="text-purple-500" /> : <UserIcon size={12} />}
                   <span className="capitalize">{user.role.toLowerCase()}</span>
                   <span>•</span>
                   <span>@{user.username}</span>
@@ -90,7 +90,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, onAddUser
             <div className="flex items-center space-x-1">
               <button 
                 onClick={() => openPasswordModal(user)}
-                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                className="p-2 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
                 title="Change Password"
               >
                 <KeyRound size={16} />
@@ -123,7 +123,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, onAddUser
               type="text"
               value={newUser.name}
               onChange={e => setNewUser({...newUser, name: e.target.value})}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none bg-white"
               placeholder="e.g. Sarah Smith"
             />
           </div>
@@ -134,7 +134,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, onAddUser
               type="text"
               value={newUser.username}
               onChange={e => setNewUser({...newUser, username: e.target.value})}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none bg-white"
               placeholder="e.g. sarah"
             />
           </div>
@@ -145,7 +145,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, onAddUser
               type="password"
               value={newUser.password}
               onChange={e => setNewUser({...newUser, password: e.target.value})}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none bg-white"
               placeholder="••••••••"
             />
           </div>
@@ -154,7 +154,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, onAddUser
             <select
               value={newUser.role}
               onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none bg-white"
             >
               <option value={UserRole.USER}>User</option>
               <option value={UserRole.ADMIN}>Admin</option>
@@ -183,7 +183,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ users, onAddUser
               type="password"
               value={newPassword}
               onChange={e => setNewPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none bg-white"
               placeholder="Enter new password"
             />
           </div>

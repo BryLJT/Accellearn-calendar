@@ -1,6 +1,6 @@
 import { CalendarEvent } from '../types';
 
-export const generateICS = (events: CalendarEvent[], appName = "TeamSync"): string => {
+export const generateICS = (events: CalendarEvent[], appName = "Accellearn"): string => {
   const formatDateTime = (dateStr: string, timeStr: string) => {
     // dateStr: YYYY-MM-DD, timeStr: HH:mm
     // Result: YYYYMMDDTHHMM00

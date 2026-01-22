@@ -15,12 +15,11 @@ interface EventCalendarProps {
 }
 
 const COLOR_OPTIONS = [
-  { id: 'indigo', label: 'Indigo', class: 'bg-indigo-100 border-indigo-200 text-indigo-800 hover:bg-indigo-200' },
+  { id: 'purple', label: 'Purple', class: 'bg-purple-100 border-purple-200 text-purple-800 hover:bg-purple-200' },
   { id: 'blue', label: 'Blue', class: 'bg-blue-100 border-blue-200 text-blue-800 hover:bg-blue-200' },
   { id: 'green', label: 'Green', class: 'bg-green-100 border-green-200 text-green-800 hover:bg-green-200' },
   { id: 'red', label: 'Red', class: 'bg-red-100 border-red-200 text-red-800 hover:bg-red-200' },
   { id: 'amber', label: 'Amber', class: 'bg-amber-100 border-amber-200 text-amber-800 hover:bg-amber-200' },
-  { id: 'purple', label: 'Purple', class: 'bg-purple-100 border-purple-200 text-purple-800 hover:bg-purple-200' },
   { id: 'pink', label: 'Pink', class: 'bg-pink-100 border-pink-200 text-pink-800 hover:bg-pink-200' },
   { id: 'slate', label: 'Slate', class: 'bg-slate-100 border-slate-200 text-slate-800 hover:bg-slate-200' },
 ];
@@ -52,8 +51,8 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
     startTime: '09:00',
     endTime: '10:00',
     taggedUserIds: [],
-    adminColor: 'indigo',
-    userColor: 'indigo',
+    adminColor: 'purple',
+    userColor: 'purple',
     recurrence: 'none',
     tags: []
   });
@@ -149,14 +148,14 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
       endTime: newEvent.endTime!,
       taggedUserIds: newEvent.taggedUserIds || [],
       createdBy: currentUser.id,
-      adminColor: newEvent.adminColor || 'indigo',
-      userColor: newEvent.userColor || 'indigo',
+      adminColor: newEvent.adminColor || 'purple',
+      userColor: newEvent.userColor || 'purple',
       recurrence: newEvent.recurrence || 'none',
       tags: newEvent.tags || []
     });
     setIsAddModalOpen(false);
     setAiPrompt('');
-    setNewEvent({ title: '', description: '', startTime: '09:00', endTime: '10:00', taggedUserIds: [], adminColor: 'indigo', userColor: 'indigo', recurrence: 'none', tags: [] });
+    setNewEvent({ title: '', description: '', startTime: '09:00', endTime: '10:00', taggedUserIds: [], adminColor: 'purple', userColor: 'purple', recurrence: 'none', tags: [] });
   };
 
   const handleExportICS = () => {
@@ -166,7 +165,7 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `teamsync-${currentUser.username}.ics`);
+    link.setAttribute('download', `accellearn-${currentUser.username}.ics`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -180,7 +179,8 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
   };
 
   const getEventStyle = (event: CalendarEvent) => {
-    const colorKey = currentUser.role === UserRole.ADMIN ? (event.adminColor || 'indigo') : (event.userColor || 'indigo');
+    const colorKey = currentUser.role === UserRole.ADMIN ? (event.adminColor || 'purple') : (event.userColor || 'purple');
+    // Fallback to purple if the saved color (e.g. 'indigo') no longer exists in options
     return (COLOR_OPTIONS.find(c => c.id === colorKey) || COLOR_OPTIONS[0]).class;
   };
 
@@ -201,10 +201,10 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
             </Button>
             <div className="h-6 w-px bg-slate-300 mx-1 hidden md:block"></div>
             <Button variant="secondary" onClick={() => setIsFilterOpen(!isFilterOpen)}>
-              <Filter size={16} className={`mr-2 ${isFilterOpen ? 'text-indigo-600' : 'text-slate-500'}`} />
+              <Filter size={16} className={`mr-2 ${isFilterOpen ? 'text-purple-600' : 'text-slate-500'}`} />
               Filters
               {(filterTags.length + filterUserIds.length > 0) && (
-                <span className="ml-2 bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full">{filterTags.length + filterUserIds.length}</span>
+                <span className="ml-2 bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full">{filterTags.length + filterUserIds.length}</span>
               )}
             </Button>
             <Button variant="secondary" onClick={handlePrevMonth}><ChevronLeft size={20} /></Button>
@@ -223,7 +223,7 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
                   <div className="flex flex-wrap gap-2">
                     {users.map(u => (
                       <button key={u.id} onClick={() => setFilterUserIds(prev => prev.includes(u.id) ? prev.filter(id => id !== u.id) : [...prev, u.id])}
-                        className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-sm border transition-all ${filterUserIds.includes(u.id) ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                        className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-sm border transition-all ${filterUserIds.includes(u.id) ? 'bg-purple-50 border-purple-200 text-purple-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
                         <img src={u.avatarUrl} className="w-4 h-4 rounded-full" alt="" /><span>{u.name.split(' ')[0]}</span>
                       </button>
                     ))}
@@ -259,7 +259,7 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
             const isToday = new Date().toDateString() === new Date(currentDate.getFullYear(), currentDate.getMonth(), day).toDateString();
             return (
               <div key={day} className={`bg-white min-h-[120px] p-2 transition-colors hover:bg-slate-50 ${currentUser.role === UserRole.ADMIN ? 'cursor-pointer' : ''}`} onClick={() => handleDayClick(day)}>
-                <div className={`flex justify-center items-center w-7 h-7 rounded-full text-sm font-medium mb-1 ${isToday ? 'bg-indigo-600 text-white' : 'text-slate-700'}`}>{day}</div>
+                <div className={`flex justify-center items-center w-7 h-7 rounded-full text-sm font-medium mb-1 ${isToday ? 'bg-purple-600 text-white' : 'text-slate-700'}`}>{day}</div>
                 <div className="space-y-1">
                   {dayEvents.map(event => (
                     <div key={event.id} className={`px-2 py-1 border rounded text-xs truncate cursor-pointer transition-all hover:brightness-95 ${getEventStyle(event)}`} onClick={(e) => { e.stopPropagation(); setSelectedEvent(event); }}>
@@ -275,9 +275,9 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
 
       <Modal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} title="Calendar Synchronization">
         <div className="space-y-6">
-          <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
-            <h4 className="font-bold text-indigo-900 mb-2 flex items-center"><Download size={18} className="mr-2" />One-Time Export (.ics)</h4>
-            <p className="text-sm text-indigo-700 mb-4">Download a file to manually import your events into Google Calendar or Outlook.</p>
+          <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
+            <h4 className="font-bold text-purple-900 mb-2 flex items-center"><Download size={18} className="mr-2" />One-Time Export (.ics)</h4>
+            <p className="text-sm text-purple-700 mb-4">Download a file to manually import your events into Google Calendar or Outlook.</p>
             <Button onClick={handleExportICS} className="w-full">Download ICS File</Button>
           </div>
 
@@ -293,7 +293,7 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
               </Button>
             </div>
             <div className="mt-4 flex items-start space-x-2 text-xs text-slate-500 bg-white/50 p-2 rounded border border-slate-100">
-              <Info size={14} className="shrink-0 mt-0.5 text-indigo-500" />
+              <Info size={14} className="shrink-0 mt-0.5 text-purple-500" />
               <p>In your calendar app (Apple, Google, Outlook), choose <span className="font-semibold">"Add Calendar From URL"</span> and paste the link above.</p>
             </div>
           </div>
@@ -319,7 +319,7 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
               <h4 className="text-sm font-semibold text-slate-900 mb-3 flex items-center"><Users size={16} className="mr-2" />Attendees</h4>
               <div className="flex flex-wrap gap-2">
                 {users.filter(u => selectedEvent.taggedUserIds.includes(u.id)).map(u => (
-                  <div key={u.id} className="flex items-center space-x-2 bg-indigo-50 border border-indigo-100 pl-1 pr-3 py-1 rounded-full"><img src={u.avatarUrl} alt="" className="w-6 h-6 rounded-full" /><span className="text-sm font-medium text-indigo-900">{u.name}</span></div>
+                  <div key={u.id} className="flex items-center space-x-2 bg-purple-50 border border-purple-100 pl-1 pr-3 py-1 rounded-full"><img src={u.avatarUrl} alt="" className="w-6 h-6 rounded-full" /><span className="text-sm font-medium text-purple-900">{u.name}</span></div>
                 ))}
                 {(!selectedEvent.taggedUserIds || selectedEvent.taggedUserIds.length === 0) && <span className="text-sm text-slate-500">No attendees</span>}
               </div>
@@ -335,10 +335,10 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
 
       <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Schedule Event">
         <div className="space-y-6">
-          <div className="bg-gradient-to-r from-indigo-50 to-slate-50 p-4 rounded-xl border border-indigo-100">
-            <label className="flex items-center text-sm font-semibold text-indigo-700 mb-2"><Wand2 size={16} className="mr-2" />AI Assistant</label>
+          <div className="bg-gradient-to-r from-purple-50 to-slate-50 p-4 rounded-xl border border-purple-100">
+            <label className="flex items-center text-sm font-semibold text-purple-700 mb-2"><Wand2 size={16} className="mr-2" />AI Assistant</label>
             <div className="flex gap-2">
-              <input type="text" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="e.g. Design Sync with Jane next Tuesday at 2pm" className="flex-1 px-3 py-2 text-sm border border-indigo-200 rounded-lg outline-none bg-white" />
+              <input type="text" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="e.g. Design Sync with Jane next Tuesday at 2pm" className="flex-1 px-3 py-2 text-sm border border-purple-200 rounded-lg outline-none bg-white" />
               <Button onClick={handleAiGenerate} isLoading={isAiLoading} disabled={!aiPrompt}>Fill</Button>
             </div>
           </div>
@@ -374,8 +374,8 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
                     }}
                     className={`flex items-center space-x-1 px-2 py-1 rounded-full text-xs border transition-colors ${
                       (newEvent.taggedUserIds || []).includes(u.id) 
-                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 ring-1 ring-indigo-200' 
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-white hover:border-indigo-200'
+                        ? 'bg-purple-50 border-purple-200 text-purple-700 ring-1 ring-purple-200' 
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-white hover:border-purple-200'
                     }`}
                   >
                     <img src={u.avatarUrl} alt="" className="w-4 h-4 rounded-full" />
@@ -391,14 +391,14 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
               <div className="flex flex-wrap gap-3">
                 {COLOR_OPTIONS.map(option => {
                   const currentSelection = currentUser.role === UserRole.ADMIN ? newEvent.adminColor : newEvent.userColor;
-                  const isSelected = (currentSelection || 'indigo') === option.id;
+                  const isSelected = (currentSelection || 'purple') === option.id;
                   
                   return (
                     <button
                       key={option.id}
                       type="button"
                       onClick={() => setNewEvent({ ...newEvent, adminColor: option.id, userColor: option.id })}
-                      className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${option.class.split(' ')[0]} ${isSelected ? 'ring-2 ring-offset-2 ring-indigo-500' : 'opacity-70 hover:opacity-100'}`}
+                      className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${option.class.split(' ')[0]} ${isSelected ? 'ring-2 ring-offset-2 ring-purple-500' : 'opacity-70 hover:opacity-100'}`}
                       title={option.label}
                     >
                       {isSelected && <Check size={14} className="text-current opacity-70" />}
