@@ -1,4 +1,3 @@
-
 import { User, CalendarEvent, UserRole } from '../types';
 import { CONFIG } from './config';
 
@@ -52,6 +51,7 @@ async function apiFetch(endpoint: string, options: RequestInit = {}) {
   try {
     const response = await fetch(url, {
       ...options,
+      mode: 'cors', // Explicitly request CORS
       headers,
     });
 

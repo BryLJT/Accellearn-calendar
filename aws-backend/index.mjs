@@ -1,16 +1,16 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, ScanCommand, PutCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
+import { Buffer } from "node:buffer";
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
 
-// Table Names (Must match what you created in Phase 2)
+// Table Names
 const TABLES = {
   EVENTS: "TeamSync_Events",
   USERS: "TeamSync_Users"
 };
 
-// Expanded Headers to allow more types of browser requests
 const HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token",
@@ -22,17 +22,16 @@ export const handler = async (event) => {
   console.log("Received event:", JSON.stringify(event, null, 2));
 
   try {
-    // 1. Normalize Event Data (Handles both REST API v1 and HTTP API v2)
     const httpMethod = event.httpMethod || event.requestContext?.http?.method;
     
-    // 2. Handle CORS Preflight immediately
+    // Handle Preflight
     if (httpMethod === 'OPTIONS') {
       return { statusCode: 200, headers: HEADERS, body: '' };
     }
 
     let path = event.path || event.rawPath || "";
     
-    // 3. Normalize Path (Remove stage prefix if present)
+    // Normalize Path
     if (path.endsWith('/login')) path = '/login';
     else if (path.endsWith('/logout')) path = '/logout';
     else if (path.endsWith('/events')) path = '/events';
@@ -40,16 +39,23 @@ export const handler = async (event) => {
     else if (path.includes('/events/')) path = '/events/' + path.split('/events/').pop();
     else if (path.includes('/users/')) path = '/users/' + path.split('/users/').pop();
 
-    // 4. Parse Body Safely
-    /** @type {any} */
-    let body = {};
+    // Parse Body with Base64 support
+    let body = /** @type {any} */ ({});
     if (event.body) {
       try {
-        body = JSON.parse(event.body);
+        let bodyStr = event.body;
+        if (event.isBase64Encoded) {
+          bodyStr = Buffer.from(event.body, 'base64').toString('utf-8');
+        }
+        body = JSON.parse(bodyStr);
       } catch (e) {
         console.error("Failed to parse body:", e);
-        // Continue with empty body, or return 400 if body is required
       }
+    }
+
+    // --- HEALTH CHECK (Root) ---
+    if (path === '/' || path === '') {
+      return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ status: "API Online", time: new Date().toISOString() }) };
     }
 
     // --- LOGIN ROUTE ---
@@ -92,7 +98,6 @@ export const handler = async (event) => {
         const command = new ScanCommand({ TableName: TABLES.USERS });
         const response = await docClient.send(command);
         
-        // Bootstrap Default Admin if empty
         if (!response.Items || response.Items.length === 0) {
            const defaultAdmin = { 
              id: 'admin-1', 
@@ -131,7 +136,6 @@ export const handler = async (event) => {
 
   } catch (err) {
     console.error("Backend Critical Error:", err);
-    // CRITICAL: Always return headers even on crash, so browser sees the 500
     return { 
       statusCode: 500, 
       headers: HEADERS, 
