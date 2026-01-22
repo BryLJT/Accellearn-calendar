@@ -4,53 +4,18 @@ const USERS_KEY = 'teamsync_users';
 const EVENTS_KEY = 'teamsync_events';
 const CURRENT_USER_KEY = 'teamsync_current_user';
 
-// Initialize default data if empty
+// Utility to simulate network latency
+const delay = (ms: number = 200) => new Promise(resolve => setTimeout(resolve, ms));
+
 const initData = () => {
   if (!localStorage.getItem(USERS_KEY)) {
-    const defaultAdmin: User = {
-      id: 'admin-1',
-      username: 'admin',
-      name: 'System Admin',
-      role: UserRole.ADMIN,
-      password: 'admin', // Simple mock password
-      avatarUrl: 'https://picsum.photos/seed/admin/200'
-    };
-    const defaultUser: User = {
-      id: 'user-1',
-      username: 'user',
-      name: 'Jane Doe',
-      role: UserRole.USER,
-      password: 'user',
-      avatarUrl: 'https://picsum.photos/seed/jane/200'
-    };
-    const user2: User = {
-      id: 'user-2',
-      username: 'user2',
-      name: 'Michael Chen',
-      role: UserRole.USER,
-      password: 'user2',
-      avatarUrl: 'https://picsum.photos/seed/michael/200'
-    };
-    const user3: User = {
-      id: 'user-3',
-      username: 'user3',
-      name: 'Sarah Connor',
-      role: UserRole.USER,
-      password: 'user3',
-      avatarUrl: 'https://picsum.photos/seed/sarah/200'
-    };
-    const user4: User = {
-      id: 'user-4',
-      username: 'user4',
-      name: 'David Smith',
-      role: UserRole.USER,
-      password: 'user4',
-      avatarUrl: 'https://picsum.photos/seed/david/200'
-    };
-
-    localStorage.setItem(USERS_KEY, JSON.stringify([defaultAdmin, defaultUser, user2, user3, user4]));
+    const defaultUsers: User[] = [
+      { id: 'admin-1', username: 'admin', name: 'System Admin', role: UserRole.ADMIN, password: 'admin', avatarUrl: 'https://picsum.photos/seed/admin/200' },
+      { id: 'user-1', username: 'user', name: 'Jane Doe', role: UserRole.USER, password: 'user', avatarUrl: 'https://picsum.photos/seed/jane/200' },
+      { id: 'user-2', username: 'user2', name: 'Michael Chen', role: UserRole.USER, password: 'user2', avatarUrl: 'https://picsum.photos/seed/michael/200' }
+    ];
+    localStorage.setItem(USERS_KEY, JSON.stringify(defaultUsers));
   }
-
   if (!localStorage.getItem(EVENTS_KEY)) {
     localStorage.setItem(EVENTS_KEY, JSON.stringify([]));
   }
@@ -59,36 +24,46 @@ const initData = () => {
 initData();
 
 export const storageService = {
-  getUsers: (): User[] => {
+  getUsers: async (): Promise<User[]> => {
+    await delay();
     const data = localStorage.getItem(USERS_KEY);
     return data ? JSON.parse(data) : [];
   },
 
-  saveUser: (user: User): void => {
-    const users = storageService.getUsers();
-    // Update or add
-    const index = users.findIndex(u => u.id === user.id);
+  saveUser: async (user: User): Promise<void> => {
+    await delay();
+    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+    const index = users.findIndex((u: User) => u.id === user.id);
     if (index >= 0) {
       users[index] = user;
     } else {
       users.push(user);
     }
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
+
+    // If the updated user is the current logged in user, update their session too
+    const currentUser = storageService.getCurrentUser();
+    if (currentUser && currentUser.id === user.id) {
+      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+    }
   },
 
-  deleteUser: (userId: string): void => {
-    const users = storageService.getUsers().filter(u => u.id !== userId);
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
+  deleteUser: async (userId: string): Promise<void> => {
+    await delay();
+    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+    localStorage.setItem(USERS_KEY, JSON.stringify(users.filter((u: User) => u.id !== userId)));
   },
 
-  getEvents: (): CalendarEvent[] => {
+  getEvents: async (): Promise<CalendarEvent[]> => {
+    await delay();
     const data = localStorage.getItem(EVENTS_KEY);
     return data ? JSON.parse(data) : [];
   },
 
-  saveEvent: (event: CalendarEvent): void => {
-    const events = storageService.getEvents();
-    const index = events.findIndex(e => e.id === event.id);
+  saveEvent: async (event: CalendarEvent): Promise<void> => {
+    await delay();
+    const events = JSON.parse(localStorage.getItem(EVENTS_KEY) || '[]');
+    const index = events.findIndex((e: CalendarEvent) => e.id === event.id);
     if (index >= 0) {
       events[index] = event;
     } else {
@@ -97,15 +72,16 @@ export const storageService = {
     localStorage.setItem(EVENTS_KEY, JSON.stringify(events));
   },
 
-  deleteEvent: (eventId: string): void => {
-    const events = storageService.getEvents().filter(e => e.id !== eventId);
-    localStorage.setItem(EVENTS_KEY, JSON.stringify(events));
+  deleteEvent: async (eventId: string): Promise<void> => {
+    await delay();
+    const events = JSON.parse(localStorage.getItem(EVENTS_KEY) || '[]');
+    localStorage.setItem(EVENTS_KEY, JSON.stringify(events.filter((e: CalendarEvent) => e.id !== eventId)));
   },
 
-  // Auth Mocks
-  login: (username: string, password: string): User | null => {
-    const users = storageService.getUsers();
-    const user = users.find(u => u.username === username && u.password === password);
+  login: async (username: string, password: string): Promise<User | null> => {
+    await delay(400);
+    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+    const user = users.find((u: User) => u.username === username && u.password === password);
     if (user) {
       localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
       return user;
@@ -113,7 +89,7 @@ export const storageService = {
     return null;
   },
 
-  logout: (): void => {
+  logout: async (): Promise<void> => {
     localStorage.removeItem(CURRENT_USER_KEY);
   },
 

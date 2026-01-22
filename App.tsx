@@ -1,74 +1,117 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { User, UserRole, CalendarEvent } from './types';
 import { storageService } from './services/storageService';
 import { EventCalendar } from './components/EventCalendar';
 import { UserManagement } from './components/UserManagement';
 import { Button } from './components/Button';
-import { LayoutDashboard, Users, LogOut, Calendar as CalendarIcon, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Users, LogOut, Calendar as CalendarIcon, Loader2, RefreshCw } from 'lucide-react';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<'calendar' | 'users'>('calendar');
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isActionLoading, setIsActionLoading] = useState(false);
+  const [lastSync, setLastSync] = useState<Date>(new Date());
   
   // Login State
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  useEffect(() => {
-    // Check for existing session
-    const currentUser = storageService.getCurrentUser();
-    if (currentUser) {
-      setUser(currentUser);
-      refreshData();
-    }
+  const refreshData = useCallback(async (showLoading = false) => {
+    if (showLoading) setIsActionLoading(true);
+    const [fetchedUsers, fetchedEvents] = await Promise.all([
+      storageService.getUsers(),
+      storageService.getEvents()
+    ]);
+    setAllUsers(fetchedUsers);
+    setEvents(fetchedEvents);
+    setLastSync(new Date());
+    if (showLoading) setIsActionLoading(false);
   }, []);
 
-  const refreshData = () => {
-    setAllUsers(storageService.getUsers());
-    setEvents(storageService.getEvents());
-  };
+  useEffect(() => {
+    const checkSession = async () => {
+      const currentUser = storageService.getCurrentUser();
+      if (currentUser) {
+        setUser(currentUser);
+        await refreshData();
+      }
+      setIsInitialLoad(false);
+    };
+    checkSession();
+  }, [refreshData]);
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    const loggedInUser = storageService.login(username, password);
-    if (loggedInUser) {
-      setUser(loggedInUser);
-      setLoginError('');
+  // "Live Update" Simulation: Poll every 10 seconds
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => {
       refreshData();
-    } else {
-      setLoginError('Invalid credentials. Try admin/admin or user/user');
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [user, refreshData]);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsActionLoading(true);
+    try {
+      const loggedInUser = await storageService.login(username, password);
+      if (loggedInUser) {
+        setUser(loggedInUser);
+        setLoginError('');
+        await refreshData();
+      } else {
+        setLoginError('Invalid credentials. Use admin/admin or user/user');
+      }
+    } finally {
+      setIsActionLoading(false);
     }
   };
 
-  const handleLogout = () => {
-    storageService.logout();
+  const handleLogout = async () => {
+    await storageService.logout();
     setUser(null);
     setUsername('');
     setPassword('');
   };
 
-  const handleSaveUser = (userToSave: User) => {
-    storageService.saveUser(userToSave);
-    refreshData();
+  const handleSaveUser = async (userToSave: User) => {
+    setIsActionLoading(true);
+    await storageService.saveUser(userToSave);
+    await refreshData();
+    setIsActionLoading(false);
   };
 
-  const handleDeleteUser = (id: string) => {
-    storageService.deleteUser(id);
-    refreshData();
+  const handleDeleteUser = async (id: string) => {
+    setIsActionLoading(true);
+    await storageService.deleteUser(id);
+    await refreshData();
+    setIsActionLoading(false);
   };
 
-  const handleAddEvent = (event: CalendarEvent) => {
-    storageService.saveEvent(event);
-    refreshData();
+  const handleAddEvent = async (event: CalendarEvent) => {
+    setIsActionLoading(true);
+    await storageService.saveEvent(event);
+    await refreshData();
+    setIsActionLoading(false);
   };
 
-  const handleDeleteEvent = (id: string) => {
-    storageService.deleteEvent(id);
-    refreshData();
+  const handleDeleteEvent = async (id: string) => {
+    setIsActionLoading(true);
+    await storageService.deleteEvent(id);
+    await refreshData();
+    setIsActionLoading(false);
   };
+
+  if (isInitialLoad) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
+      </div>
+    );
+  }
 
   if (!user) {
     return (
@@ -79,7 +122,7 @@ const App: React.FC = () => {
               <CalendarIcon className="text-white" size={32} />
             </div>
             <h1 className="text-2xl font-bold text-white mb-2">TeamSync Calendar</h1>
-            <p className="text-indigo-100 text-sm">Sign in to manage your schedule</p>
+            <p className="text-indigo-100 text-sm">Self-hosted team collaboration</p>
           </div>
           
           <div className="p-8">
@@ -95,9 +138,9 @@ const App: React.FC = () => {
                 <input 
                   type="text" 
                   value={username}
+                  disabled={isActionLoading}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white"
-                  placeholder="admin"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
                 />
               </div>
               
@@ -106,21 +149,16 @@ const App: React.FC = () => {
                 <input 
                   type="password" 
                   value={password}
+                  disabled={isActionLoading}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white"
-                  placeholder="admin"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
                 />
               </div>
 
-              <Button type="submit" className="w-full justify-center py-2.5">
+              <Button type="submit" className="w-full justify-center py-2.5" isLoading={isActionLoading}>
                 Sign In
               </Button>
             </form>
-            <div className="mt-6 text-center text-xs text-slate-400">
-              <p>Demo Credentials:</p>
-              <p>Admin: admin / admin</p>
-              <p>User: user / user</p>
-            </div>
           </div>
         </div>
       </div>
@@ -129,7 +167,14 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row">
-      {/* Sidebar */}
+      {isActionLoading && (
+        <div className="fixed inset-0 bg-slate-900/10 backdrop-blur-[1px] z-[9999] flex items-center justify-center">
+           <div className="bg-white p-4 rounded-full shadow-lg">
+             <Loader2 className="w-6 h-6 text-indigo-600 animate-spin" />
+           </div>
+        </div>
+      )}
+
       <aside className="bg-slate-900 text-white w-full md:w-64 flex-shrink-0 flex flex-col">
         <div className="p-6 border-b border-slate-800 flex items-center space-x-3">
           <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center">
@@ -159,11 +204,16 @@ const App: React.FC = () => {
         </nav>
 
         <div className="p-4 border-t border-slate-800">
-          <div className="flex items-center space-x-3 mb-4 px-2">
-            <img src={user.avatarUrl} alt={user.name} className="w-9 h-9 rounded-full bg-slate-700" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">{user.name}</p>
-              <p className="text-xs text-slate-500 truncate capitalize">{user.role.toLowerCase()}</p>
+          <div className="flex items-center justify-between mb-4 px-2">
+            <div className="flex items-center space-x-3 min-w-0">
+              <img src={user.avatarUrl} alt={user.name} className="w-9 h-9 rounded-full bg-slate-700" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-white truncate">{user.name}</p>
+                <div className="flex items-center text-[10px] text-slate-500">
+                  <RefreshCw size={10} className="mr-1 animate-pulse" />
+                  Synced {lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
             </div>
           </div>
           <button 
@@ -176,7 +226,6 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-7xl mx-auto p-4 md:p-8">
           {activeTab === 'calendar' && (
