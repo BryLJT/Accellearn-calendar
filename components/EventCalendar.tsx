@@ -5,6 +5,7 @@ import { Button } from './Button';
 import { Modal } from './Modal';
 import { parseEventWithAI } from '../services/geminiService';
 import { generateICS } from '../services/icsService';
+import { CONFIG } from '../services/config';
 
 interface EventCalendarProps {
   events: CalendarEvent[];
@@ -280,12 +281,22 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
     document.body.removeChild(link);
   };
 
+  // --- CHANGED LOGIC START ---
+  // We now build the URL to point directly to the API Gateway.
+  // Format: API_URL + ?route=/calendar/{userId}.ics
+  const getFeedUrl = () => {
+    if (!CONFIG.IS_CLOUD) return `${window.location.origin}/local-demo/calendar.ics`;
+    const baseUrl = CONFIG.API_URL;
+    return `${baseUrl}?route=/calendar/${currentUser.id}.ics`;
+  };
+
   const handleCopyLink = () => {
-    const dummyUrl = `${window.location.origin}/api/v1/calendar/${currentUser.id}/feed.ics`;
-    navigator.clipboard.writeText(dummyUrl);
+    const url = getFeedUrl();
+    navigator.clipboard.writeText(url);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
+  // --- CHANGED LOGIC END ---
 
   const getEventStyle = (event: CalendarEvent) => {
     const colorKey = currentUser.role === UserRole.ADMIN ? (event.adminColor || 'purple') : (event.userColor || 'purple');
@@ -399,7 +410,7 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
             <p className="text-sm text-slate-600 mb-3">Copy this URL to subscribe in your calendar app. Updates here will sync automatically to your personal device.</p>
             <div className="flex items-center space-x-2">
               <code className="flex-1 p-2 bg-white border border-slate-300 rounded text-xs text-slate-500 overflow-hidden text-ellipsis whitespace-nowrap">
-                {`${window.location.origin}/api/calendar/${currentUser.id}.ics`}
+                {getFeedUrl()}
               </code>
               <Button variant="secondary" onClick={handleCopyLink} className="shrink-0 min-w-[80px]">
                 {copiedLink ? <Check size={16} className="text-green-600" /> : 'Copy Link'}

@@ -24,6 +24,51 @@ const HEADERS = {
   "Content-Type": "application/json"
 };
 
+// Helper: Generate ICS content string
+const generateICS = (events, appName = "Accellearn") => {
+  const formatDateTime = (dateStr, timeStr) => {
+    // dateStr: YYYY-MM-DD, timeStr: HH:mm
+    // Result: YYYYMMDDTHHMM00
+    if (!dateStr || !timeStr) return '';
+    return dateStr.replace(/-/g, '') + 'T' + timeStr.replace(/:/g, '') + '00';
+  };
+
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    `PRODID:-//${appName}//Calendar//EN`,
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'X-WR-CALNAME:' + appName,
+  ];
+
+  events.forEach(event => {
+    lines.push('BEGIN:VEVENT');
+    lines.push(`UID:${event.id}`);
+    lines.push(`DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`);
+    
+    // Start and End times
+    lines.push(`DTSTART:${formatDateTime(event.date, event.startTime)}`);
+    lines.push(`DTEND:${formatDateTime(event.date, event.endTime)}`);
+    
+    lines.push(`SUMMARY:${event.title}`);
+    
+    // Description - escape newlines
+    const desc = (event.description || '').replace(/\n/g, '\\n');
+    lines.push(`DESCRIPTION:${desc}`);
+    
+    // Recurrence Rule
+    if (event.recurrence && event.recurrence !== 'none') {
+      lines.push(`RRULE:FREQ=${event.recurrence.toUpperCase()}`);
+    }
+    
+    lines.push('END:VEVENT');
+  });
+
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n');
+};
+
 export const handler = async (event) => {
   console.log("Received event:", JSON.stringify(event, null, 2));
 
@@ -43,7 +88,6 @@ export const handler = async (event) => {
     let path = event.queryStringParameters?.route || event.path || event.rawPath || "";
     
     // Normalize Path
-    // If the path contains the specific Lambda resource name (from the AWS route), treat it as root/health check
     if (path.includes('/accellearn-calendar-backend') && !event.queryStringParameters?.route) {
         path = '/'; 
     }
@@ -84,6 +128,46 @@ export const handler = async (event) => {
     // --- HEALTH CHECK ---
     if (path === '/' || path === '') {
       return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ status: "API Online" }) };
+    }
+
+    // --- ICS FEED ROUTE ---
+    // Route format: /calendar/{userId}
+    if (path.includes('/calendar/') && httpMethod === 'GET') {
+      // Extract User ID. Remove trailing .ics if present for cleanliness
+      const parts = path.split('/calendar/');
+      let userId = parts[1];
+      if (userId.endsWith('.ics')) userId = userId.replace('.ics', '');
+      
+      console.log(`Generating ICS feed for user: ${userId}`);
+
+      // 1. Fetch Events
+      const command = new ScanCommand({ TableName: TABLES.EVENTS });
+      const response = await docClient.send(command);
+      const allEvents = response.Items || [];
+
+      // 2. Filter Events for this user
+      // Assuming admins can see everything, but for the feed, we usually want specific user data.
+      // Or if the userId is "admin-1", they might want to see everything.
+      // For safety/simplicity in feed: Only show events where user is tagged OR createdBy user.
+      const userEvents = allEvents.filter(e => {
+        // Safe check for arrays
+        const tagged = Array.isArray(e.taggedUserIds) ? e.taggedUserIds : [];
+        return tagged.includes(userId) || e.createdBy === userId;
+      });
+
+      // 3. Generate ICS String
+      const icsData = generateICS(userEvents);
+
+      // 4. Return as text/calendar
+      return {
+        statusCode: 200,
+        headers: {
+          ...HEADERS,
+          "Content-Type": "text/calendar; charset=utf-8",
+          "Content-Disposition": `attachment; filename="accellearn-${userId}.ics"`
+        },
+        body: icsData
+      };
     }
 
     // --- LOGIN ROUTE ---
