@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { CalendarEvent, User, UserRole, RecurrenceType } from '../types';
-import { ChevronLeft, ChevronRight, Clock, Plus, Wand2, Trash2, Users, Calendar as CalendarIcon, Palette, Repeat, Tag, Filter, X, Download, Share2, Link as LinkIcon, Check, Info, Pencil, AlignLeft, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Plus, Wand2, Trash2, Users, Calendar as CalendarIcon, Palette, Repeat, Tag, Filter, X, Download, Share2, Link as LinkIcon, Check, Info, Pencil, AlignLeft, RefreshCw, CalendarOff, ArrowRightToLine } from 'lucide-react';
 import { Button } from './Button';
 import { Modal } from './Modal';
 import { parseEventWithAI } from '../services/geminiService';
@@ -40,6 +40,10 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+  
+  // Recurrence Deletion State
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [recurrenceInstanceToDelete, setRecurrenceInstanceToDelete] = useState<{id: string, date: string} | null>(null);
   
   const [filterTags, setFilterTags] = useState<string[]>([]);
   const [filterUserIds, setFilterUserIds] = useState<string[]>([]);
@@ -100,13 +104,20 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
         const checkDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
         if (checkDate < eventStartDate) continue;
 
+        const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+        // Check for exceptions (Deleted single instances)
+        if (event.exceptionDates?.includes(dateStr)) continue;
+
+        // Check for recurrence end date (Deleted future instances)
+        if (event.recurrenceEndsOn && dateStr > event.recurrenceEndsOn) continue;
+
         let isMatch = false;
         if (event.recurrence === 'daily') isMatch = true;
         else if (event.recurrence === 'weekly' && checkDate.getDay() === eventStartDate.getDay()) isMatch = true;
         else if (event.recurrence === 'monthly' && checkDate.getDate() === eventStartDate.getDate()) isMatch = true;
 
         if (isMatch) {
-          const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
           result.push({ ...event, date: dateStr, id: `${event.id}_${dateStr}` });
         }
       }
@@ -153,6 +164,68 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
     }
   };
 
+  // Logic to handle deleting recurring events
+  const handleDeleteClick = () => {
+    if (!selectedEvent) return;
+    
+    // If not recurring, just delete normally
+    if (!selectedEvent.recurrence || selectedEvent.recurrence === 'none') {
+      onDeleteEvent(selectedEvent.id);
+      setSelectedEvent(null);
+      return;
+    }
+
+    // If recurring, open the choice modal
+    setRecurrenceInstanceToDelete({
+      id: selectedEvent.id.split('_')[0], // Base ID
+      date: selectedEvent.date // Current instance date
+    });
+    setSelectedEvent(null); // Close detail modal
+    setIsDeleteModalOpen(true); // Open delete modal
+  };
+
+  const handleDeleteThisOnly = () => {
+    if (!recurrenceInstanceToDelete) return;
+    const original = events.find(e => e.id === recurrenceInstanceToDelete.id);
+    if (!original) return;
+
+    // Add current date to exceptions
+    const updated = {
+      ...original,
+      exceptionDates: [...(original.exceptionDates || []), recurrenceInstanceToDelete.date]
+    };
+    onUpdateEvent(updated);
+    setIsDeleteModalOpen(false);
+    setRecurrenceInstanceToDelete(null);
+  };
+
+  const handleDeleteFuture = () => {
+    if (!recurrenceInstanceToDelete) return;
+    const original = events.find(e => e.id === recurrenceInstanceToDelete.id);
+    if (!original) return;
+
+    // If deleting the very first instance, just delete the whole event
+    if (original.date === recurrenceInstanceToDelete.date) {
+      onDeleteEvent(original.id);
+      setIsDeleteModalOpen(false);
+      setRecurrenceInstanceToDelete(null);
+      return;
+    }
+
+    // Otherwise set recurrence end date to the day before
+    const dateObj = new Date(recurrenceInstanceToDelete.date);
+    dateObj.setDate(dateObj.getDate() - 1);
+    const dayBefore = dateObj.toISOString().split('T')[0];
+
+    const updated = {
+      ...original,
+      recurrenceEndsOn: dayBefore
+    };
+    onUpdateEvent(updated);
+    setIsDeleteModalOpen(false);
+    setRecurrenceInstanceToDelete(null);
+  };
+
   const handleAiGenerate = async () => {
     if (!aiPrompt.trim()) return;
     setIsAiLoading(true);
@@ -177,7 +250,10 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
       adminColor: newEvent.adminColor || 'purple',
       userColor: newEvent.userColor || 'purple',
       recurrence: newEvent.recurrence || 'none',
-      tags: newEvent.tags || []
+      tags: newEvent.tags || [],
+      // Preserve existing recurrence data if editing
+      recurrenceEndsOn: newEvent.recurrenceEndsOn,
+      exceptionDates: newEvent.exceptionDates
     };
 
     if (newEvent.id) {
@@ -309,6 +385,7 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
         </div>
       </div>
 
+      {/* Share Calendar Modal */}
       <Modal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} title="Calendar Synchronization">
         <div className="space-y-6">
           <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
@@ -336,6 +413,42 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
         </div>
       </Modal>
 
+      {/* Delete Recurrence Modal */}
+      <Modal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)} title="Delete Recurring Event">
+        <div className="space-y-4">
+          <p className="text-slate-600 text-sm">
+            This event is repeated on other days. How would you like to handle the deletion?
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <button 
+              onClick={handleDeleteThisOnly}
+              className="flex flex-col items-center justify-center p-6 bg-white border-2 border-slate-100 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all group"
+            >
+              <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-3 group-hover:bg-purple-100 transition-colors">
+                <CalendarOff size={24} className="text-slate-500 group-hover:text-purple-600" />
+              </div>
+              <h4 className="font-semibold text-slate-900 mb-1">Delete This Only</h4>
+              <p className="text-xs text-center text-slate-500">Remove this specific occurrence. Other dates remain unchanged.</p>
+            </button>
+
+            <button 
+              onClick={handleDeleteFuture}
+              className="flex flex-col items-center justify-center p-6 bg-white border-2 border-slate-100 rounded-xl hover:border-red-500 hover:bg-red-50 transition-all group"
+            >
+               <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-3 group-hover:bg-red-100 transition-colors">
+                <ArrowRightToLine size={24} className="text-slate-500 group-hover:text-red-600" />
+              </div>
+              <h4 className="font-semibold text-slate-900 mb-1">Delete Future</h4>
+              <p className="text-xs text-center text-slate-500">Stop the series. Remove this event and all future occurrences.</p>
+            </button>
+          </div>
+          <div className="flex justify-end pt-2">
+            <Button variant="ghost" onClick={() => setIsDeleteModalOpen(false)}>Cancel</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Event Details Modal */}
       <Modal isOpen={!!selectedEvent} onClose={() => setSelectedEvent(null)} title="Event Details">
         {selectedEvent && (
           <div className="space-y-6">
@@ -363,13 +476,14 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
             {currentUser.role === UserRole.ADMIN && (
               <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
                 <Button variant="secondary" onClick={handleEditEvent}><Pencil size={16} className="mr-2" />Edit</Button>
-                <Button variant="danger" onClick={() => { onDeleteEvent(selectedEvent.id.split('_')[0]); setSelectedEvent(null); }}><Trash2 size={16} className="mr-2" />Delete Series</Button>
+                <Button variant="danger" onClick={handleDeleteClick}><Trash2 size={16} className="mr-2" />Delete</Button>
               </div>
             )}
           </div>
         )}
       </Modal>
 
+      {/* Add/Edit Event Modal */}
       <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title={newEvent.id ? "Edit Event" : "Schedule Event"}>
         <div className="space-y-6">
           <div className="bg-gradient-to-r from-purple-50 to-slate-50 p-4 rounded-xl border border-purple-100">

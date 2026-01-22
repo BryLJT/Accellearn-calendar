@@ -29,6 +29,8 @@ export interface CalendarEvent {
   adminColor?: string;
   userColor?: string;
   recurrence?: RecurrenceType;
+  recurrenceEndsOn?: string; // ISO Date YYYY-MM-DD
+  exceptionDates?: string[]; // Array of ISO Date strings
   tags?: string[];
   type?: 'event'; // Useful for DynamoDB identification
 }
