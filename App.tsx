@@ -297,6 +297,7 @@ const App: React.FC = () => {
               currentUser={user}
               users={allUsers}
               onAddEvent={handleAddEvent}
+              onUpdateEvent={handleAddEvent}
               onDeleteEvent={handleDeleteEvent}
             />
           )}

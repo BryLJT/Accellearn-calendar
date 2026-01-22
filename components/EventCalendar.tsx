@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { CalendarEvent, User, UserRole, RecurrenceType } from '../types';
-import { ChevronLeft, ChevronRight, Clock, Plus, Wand2, Trash2, Users, Calendar as CalendarIcon, Palette, Repeat, Tag, Filter, X, Download, Share2, Link as LinkIcon, Check, Info } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Plus, Wand2, Trash2, Users, Calendar as CalendarIcon, Palette, Repeat, Tag, Filter, X, Download, Share2, Link as LinkIcon, Check, Info, Pencil, AlignLeft } from 'lucide-react';
 import { Button } from './Button';
 import { Modal } from './Modal';
 import { parseEventWithAI } from '../services/geminiService';
@@ -11,6 +11,7 @@ interface EventCalendarProps {
   currentUser: User;
   users: User[];
   onAddEvent: (event: CalendarEvent) => void;
+  onUpdateEvent: (event: CalendarEvent) => void;
   onDeleteEvent: (eventId: string) => void;
 }
 
@@ -29,6 +30,7 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
   currentUser, 
   users, 
   onAddEvent,
+  onUpdateEvent,
   onDeleteEvent
 }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -44,8 +46,8 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
   const [aiPrompt, setAiPrompt] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
 
-  const [tagInput, setTagInput] = useState('');
-  const [newEvent, setNewEvent] = useState<Partial<CalendarEvent>>({
+  // Helper to reset form state
+  const getEmptyEvent = (dateStr?: string): Partial<CalendarEvent> => ({
     title: '',
     description: '',
     startTime: '09:00',
@@ -54,8 +56,11 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
     adminColor: 'purple',
     userColor: 'purple',
     recurrence: 'none',
-    tags: []
+    tags: [],
+    date: dateStr || new Date().toISOString().split('T')[0]
   });
+
+  const [newEvent, setNewEvent] = useState<Partial<CalendarEvent>>(getEmptyEvent());
 
   const { days, firstDay } = useMemo(() => {
     const year = currentDate.getFullYear();
@@ -124,8 +129,26 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
   const handleDayClick = (day: number) => {
     if (currentUser.role !== UserRole.ADMIN) return;
     const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    setNewEvent(prev => ({ ...prev, date: dateStr }));
+    setNewEvent(getEmptyEvent(dateStr));
     setIsAddModalOpen(true);
+  };
+
+  const handleOpenAddModal = () => {
+    setNewEvent(getEmptyEvent());
+    setIsAddModalOpen(true);
+  };
+
+  const handleEditEvent = () => {
+    if (!selectedEvent) return;
+    // Extract original ID in case it's a recurrence instance
+    const baseId = selectedEvent.id.split('_')[0];
+    const originalEvent = events.find(e => e.id === baseId);
+    
+    if (originalEvent) {
+      setNewEvent({ ...originalEvent });
+      setSelectedEvent(null);
+      setIsAddModalOpen(true);
+    }
   };
 
   const handleAiGenerate = async () => {
@@ -139,23 +162,31 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEvent.title || !newEvent.date || !newEvent.startTime || !newEvent.endTime) return;
-    onAddEvent({
-      id: crypto.randomUUID(),
+
+    const eventToSave: CalendarEvent = {
+      id: newEvent.id || crypto.randomUUID(),
       title: newEvent.title,
       description: newEvent.description || '',
       date: newEvent.date!,
       startTime: newEvent.startTime!,
       endTime: newEvent.endTime!,
       taggedUserIds: newEvent.taggedUserIds || [],
-      createdBy: currentUser.id,
+      createdBy: newEvent.createdBy || currentUser.id,
       adminColor: newEvent.adminColor || 'purple',
       userColor: newEvent.userColor || 'purple',
       recurrence: newEvent.recurrence || 'none',
       tags: newEvent.tags || []
-    });
+    };
+
+    if (newEvent.id) {
+      onUpdateEvent(eventToSave);
+    } else {
+      onAddEvent(eventToSave);
+    }
+
     setIsAddModalOpen(false);
     setAiPrompt('');
-    setNewEvent({ title: '', description: '', startTime: '09:00', endTime: '10:00', taggedUserIds: [], adminColor: 'purple', userColor: 'purple', recurrence: 'none', tags: [] });
+    setNewEvent(getEmptyEvent());
   };
 
   const handleExportICS = () => {
@@ -180,7 +211,6 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
 
   const getEventStyle = (event: CalendarEvent) => {
     const colorKey = currentUser.role === UserRole.ADMIN ? (event.adminColor || 'purple') : (event.userColor || 'purple');
-    // Fallback to purple if the saved color (e.g. 'indigo') no longer exists in options
     return (COLOR_OPTIONS.find(c => c.id === colorKey) || COLOR_OPTIONS[0]).class;
   };
 
@@ -210,7 +240,7 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
             <Button variant="secondary" onClick={handlePrevMonth}><ChevronLeft size={20} /></Button>
             <Button variant="secondary" onClick={handleNextMonth}><ChevronRight size={20} /></Button>
             {currentUser.role === UserRole.ADMIN && (
-              <Button onClick={() => setIsAddModalOpen(true)}><Plus size={16} className="mr-2" />Add Event</Button>
+              <Button onClick={handleOpenAddModal}><Plus size={16} className="mr-2" />Add Event</Button>
             )}
           </div>
         </div>
@@ -311,7 +341,7 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
               <div className="flex items-center text-slate-500 mt-2 text-sm"><CalendarIcon size={16} className="mr-2" />{selectedEvent.date}</div>
               <div className="flex items-center text-slate-500 mt-1 text-sm"><Clock size={16} className="mr-2" />{selectedEvent.startTime} - {selectedEvent.endTime}</div>
             </div>
-            {selectedEvent.description && <div className="bg-slate-50 p-4 rounded-lg text-slate-700 text-sm border border-slate-100">{selectedEvent.description}</div>}
+            {selectedEvent.description && <div className="bg-slate-50 p-4 rounded-lg text-slate-700 text-sm border border-slate-100 whitespace-pre-wrap">{selectedEvent.description}</div>}
             <div className="flex flex-wrap gap-2">
               {selectedEvent.tags?.map(tag => <span key={tag} className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-md text-xs font-medium border border-emerald-100">#{tag}</span>)}
             </div>
@@ -325,7 +355,8 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
               </div>
             </div>
             {currentUser.role === UserRole.ADMIN && (
-              <div className="pt-4 border-t border-slate-100 flex justify-end">
+              <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
+                <Button variant="secondary" onClick={handleEditEvent}><Pencil size={16} className="mr-2" />Edit</Button>
                 <Button variant="danger" onClick={() => { onDeleteEvent(selectedEvent.id.split('_')[0]); setSelectedEvent(null); }}><Trash2 size={16} className="mr-2" />Delete Series</Button>
               </div>
             )}
@@ -333,7 +364,7 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
         )}
       </Modal>
 
-      <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Schedule Event">
+      <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title={newEvent.id ? "Edit Event" : "Schedule Event"}>
         <div className="space-y-6">
           <div className="bg-gradient-to-r from-purple-50 to-slate-50 p-4 rounded-xl border border-purple-100">
             <label className="flex items-center text-sm font-semibold text-purple-700 mb-2"><Wand2 size={16} className="mr-2" />AI Assistant</label>
@@ -343,7 +374,19 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
             </div>
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <input required type="text" value={newEvent.title} onChange={e => setNewEvent({ ...newEvent, title: e.target.value })} placeholder="Event Title" className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none" />
+            <div>
+              <input required type="text" value={newEvent.title} onChange={e => setNewEvent({ ...newEvent, title: e.target.value })} placeholder="Event Title" className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none font-medium" />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center"><AlignLeft size={14} className="mr-1" />Description</label>
+              <textarea 
+                value={newEvent.description || ''} 
+                onChange={e => setNewEvent({ ...newEvent, description: e.target.value })} 
+                placeholder="Add event details, meeting links, or notes..." 
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none min-h-[80px] text-sm" 
+              />
+            </div>
             
             <div className="grid grid-cols-2 gap-4">
               <input required type="date" value={newEvent.date} onChange={e => setNewEvent({ ...newEvent, date: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none" />
