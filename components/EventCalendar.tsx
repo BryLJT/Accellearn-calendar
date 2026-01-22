@@ -321,6 +321,7 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
                 {users.filter(u => selectedEvent.taggedUserIds.includes(u.id)).map(u => (
                   <div key={u.id} className="flex items-center space-x-2 bg-indigo-50 border border-indigo-100 pl-1 pr-3 py-1 rounded-full"><img src={u.avatarUrl} alt="" className="w-6 h-6 rounded-full" /><span className="text-sm font-medium text-indigo-900">{u.name}</span></div>
                 ))}
+                {(!selectedEvent.taggedUserIds || selectedEvent.taggedUserIds.length === 0) && <span className="text-sm text-slate-500">No attendees</span>}
               </div>
             </div>
             {currentUser.role === UserRole.ADMIN && (
@@ -343,16 +344,70 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <input required type="text" value={newEvent.title} onChange={e => setNewEvent({ ...newEvent, title: e.target.value })} placeholder="Event Title" className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none" />
+            
             <div className="grid grid-cols-2 gap-4">
               <input required type="date" value={newEvent.date} onChange={e => setNewEvent({ ...newEvent, date: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none" />
               <select value={newEvent.recurrence || 'none'} onChange={e => setNewEvent({ ...newEvent, recurrence: e.target.value as RecurrenceType })} className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none">
                 <option value="none">One-time</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
               </select>
             </div>
+            
             <div className="flex gap-4">
               <input required type="time" value={newEvent.startTime} onChange={e => setNewEvent({ ...newEvent, startTime: e.target.value })} className="flex-1 px-3 py-2 border border-slate-300 rounded-lg outline-none" />
               <input required type="time" value={newEvent.endTime} onChange={e => setNewEvent({ ...newEvent, endTime: e.target.value })} className="flex-1 px-3 py-2 border border-slate-300 rounded-lg outline-none" />
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Tag Team Members</label>
+              <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 border border-slate-200 rounded-lg bg-slate-50">
+                {users.map(u => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => {
+                       const current = newEvent.taggedUserIds || [];
+                       const exists = current.includes(u.id);
+                       setNewEvent({
+                         ...newEvent,
+                         taggedUserIds: exists ? current.filter(id => id !== u.id) : [...current, u.id]
+                       });
+                    }}
+                    className={`flex items-center space-x-1 px-2 py-1 rounded-full text-xs border transition-colors ${
+                      (newEvent.taggedUserIds || []).includes(u.id) 
+                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 ring-1 ring-indigo-200' 
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-white hover:border-indigo-200'
+                    }`}
+                  >
+                    <img src={u.avatarUrl} alt="" className="w-4 h-4 rounded-full" />
+                    <span>{u.name}</span>
+                  </button>
+                ))}
+                {users.length === 0 && <span className="text-xs text-slate-400 p-1">No users available to tag.</span>}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Event Color</label>
+              <div className="flex flex-wrap gap-3">
+                {COLOR_OPTIONS.map(option => {
+                  const currentSelection = currentUser.role === UserRole.ADMIN ? newEvent.adminColor : newEvent.userColor;
+                  const isSelected = (currentSelection || 'indigo') === option.id;
+                  
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setNewEvent({ ...newEvent, adminColor: option.id, userColor: option.id })}
+                      className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${option.class.split(' ')[0]} ${isSelected ? 'ring-2 ring-offset-2 ring-indigo-500' : 'opacity-70 hover:opacity-100'}`}
+                      title={option.label}
+                    >
+                      {isSelected && <Check size={14} className="text-current opacity-70" />}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
             <div className="flex justify-end pt-4 border-t border-slate-100">
               <Button type="button" variant="ghost" className="mr-2" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
               <Button type="submit">Save Event</Button>
