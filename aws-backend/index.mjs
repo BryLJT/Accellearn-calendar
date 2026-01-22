@@ -39,9 +39,16 @@ export const handler = async (event) => {
     }
 
     const httpMethod = event.httpMethod || event.requestContext?.http?.method;
+    // PRIORITY: 1. Query Param (?route=), 2. Event Path, 3. Raw Path
     let path = event.queryStringParameters?.route || event.path || event.rawPath || "";
     
     // Normalize Path
+    // If the path contains the specific Lambda resource name (from the AWS route), treat it as root/health check
+    if (path.includes('/accellearn-calendar-backend') && !event.queryStringParameters?.route) {
+        path = '/'; 
+    }
+
+    // Standard routing normalizations
     if (path.endsWith('/login')) path = '/login';
     else if (path.endsWith('/logout')) path = '/logout';
     else if (path.endsWith('/events')) path = '/events';
