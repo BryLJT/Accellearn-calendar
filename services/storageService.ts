@@ -70,7 +70,7 @@ async function apiFetch(endpoint: string, options: RequestInit = {}) {
         if (textText) errorMessage = textText;
       }
       
-      throw new Error(`API Error (${response.status}): ${errorMessage}`);
+      throw new Error(errorMessage);
     }
 
     return response.json();
@@ -155,17 +155,13 @@ export const storageService = {
 
   login: async (username: string, password: string): Promise<User | null> => {
     if (!isUsingMock) {
-      try {
-        const user = await apiFetch('/login', {
-          method: 'POST',
-          body: JSON.stringify({ username, password })
-        });
-        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
-        return user;
-      } catch (e) {
-        console.error("Login failed:", e);
-        return null;
-      }
+      // Propagate errors up to the UI instead of swallowing them
+      const user = await apiFetch('/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password })
+      });
+      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+      return user;
     }
     await delay(400);
     const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
@@ -174,7 +170,7 @@ export const storageService = {
       localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
       return user;
     }
-    return null;
+    throw new Error("Invalid credentials");
   },
 
   logout: async (): Promise<void> => {

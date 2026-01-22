@@ -1,5 +1,5 @@
 {
-  "name": "TeamSync Calendar",
+  "name": "Accellearn team Calendar",
   "description": "A secure, role-based calendar application for teams. Admins can manage users and schedule events with specific attendees using AI-powered natural language entry. Users view their personalized schedule.",
   "requestFramePermissions": [
     "geolocation"

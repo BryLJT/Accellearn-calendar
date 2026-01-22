@@ -60,8 +60,7 @@ export const handler = async (event) => {
     console.log(`Processing request: ${httpMethod} ${path}`);
 
     // Parse Body with Base64 support
-    /** @type {any} */
-    let body = {};
+    let body = /** @type {any} */ ({});
     if (event.body) {
       try {
         let bodyStr = event.body;
@@ -83,10 +82,28 @@ export const handler = async (event) => {
 
     // --- LOGIN ROUTE ---
     if (path === '/login' && httpMethod === 'POST') {
-      const { username, password } = /** @type {any} */ (body);
+      const { username, password } = body;
       const command = new ScanCommand({ TableName: TABLES.USERS });
       const response = await docClient.send(command);
-      const user = response.Items?.find(u => u.username === username && u.password === password);
+      
+      const users = response.Items || [];
+
+      // SPECIAL CASE: First Run / Empty DB
+      // If DB is empty, and user tries to log in as admin/admin, create the user and let them in.
+      if (users.length === 0 && username === 'admin' && password === 'admin') {
+         const defaultAdmin = { 
+             id: 'admin-1', 
+             username: 'admin', 
+             password: 'admin', 
+             name: 'System Admin', 
+             role: 'ADMIN', 
+             avatarUrl: 'https://picsum.photos/seed/admin/200' 
+         };
+         await docClient.send(new PutCommand({ TableName: TABLES.USERS, Item: defaultAdmin }));
+         return { statusCode: 200, headers: HEADERS, body: JSON.stringify(defaultAdmin) };
+      }
+
+      const user = users.find(u => u.username === username && u.password === password);
 
       if (user) {
         return { statusCode: 200, headers: HEADERS, body: JSON.stringify(user) };

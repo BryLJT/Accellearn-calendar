@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { User, UserRole, CalendarEvent } from './types';
 import { storageService } from './services/storageService';
@@ -69,15 +68,18 @@ const App: React.FC = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsActionLoading(true);
+    setLoginError('');
+    
     try {
       const loggedInUser = await storageService.login(username, password);
       if (loggedInUser) {
         setUser(loggedInUser);
-        setLoginError('');
         await refreshData();
-      } else {
-        setLoginError('Invalid credentials. Use admin/admin or user/user');
       }
+    } catch (err: any) {
+      // Now we display the REAL error from the backend (e.g. "Table not found", "Access Denied")
+      console.error(err);
+      setLoginError(err.message || 'Login failed');
     } finally {
       setIsActionLoading(false);
     }
