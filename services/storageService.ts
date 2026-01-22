@@ -3,7 +3,7 @@ import { User, CalendarEvent, UserRole } from '../types';
 import { CONFIG } from './config';
 
 /**
- * PHASE 3 COMPLETE: AWS API GATEWAY CONNECTION
+ * PHASE 5: AWS API GATEWAY CONNECTION
  * Connected to AWS Lambda via API Gateway
  */
 // We use the URL from our central config file
@@ -40,18 +40,33 @@ async function apiFetch(endpoint: string, options: RequestInit = {}) {
   const baseUrl = API_BASE_URL.replace(/\/$/, '');
   const url = `${baseUrl}${endpoint}`;
   
+  const headers: Record<string, string> = {
+    ...(options.headers as Record<string, string>),
+  };
+
+  // Only add Content-Type for requests that have a body
+  if (options.method && ['POST', 'PUT', 'PATCH'].includes(options.method.toUpperCase())) {
+    headers['Content-Type'] = 'application/json';
+  }
+  
   try {
     const response = await fetch(url, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
+      headers,
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`API Error (${response.status}): ${errorText || response.statusText}`);
+      // Try to parse error as JSON, fallback to text
+      let errorMessage = response.statusText;
+      try {
+        const errorJson = await response.json();
+        errorMessage = errorJson.error || JSON.stringify(errorJson);
+      } catch (e) {
+        const textText = await response.text();
+        if (textText) errorMessage = textText;
+      }
+      
+      throw new Error(`API Error (${response.status}): ${errorMessage}`);
     }
 
     return response.json();
@@ -143,7 +158,8 @@ export const storageService = {
         });
         localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
         return user;
-      } catch {
+      } catch (e) {
+        console.error("Login failed:", e);
         return null;
       }
     }

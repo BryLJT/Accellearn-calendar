@@ -10,36 +10,48 @@ const TABLES = {
   USERS: "TeamSync_Users"
 };
 
+// Expanded Headers to allow more types of browser requests
 const HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type",
-  "Access-Control-Allow-Methods": "OPTIONS,POST,GET,DELETE"
+  "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token",
+  "Access-Control-Allow-Methods": "OPTIONS,POST,GET,PUT,DELETE",
+  "Content-Type": "application/json"
 };
 
 export const handler = async (event) => {
   console.log("Received event:", JSON.stringify(event, null, 2));
 
-  // 1. Normalize Event Data (Handles both REST API v1 and HTTP API v2)
-  const httpMethod = event.httpMethod || event.requestContext?.http?.method;
-  let path = event.path || event.rawPath || "";
-  
-  // 2. Normalize Path (Remove stage prefix if present, e.g., /default/login -> /login)
-  // This ensures the code works regardless of your API Gateway stage configuration.
-  if (path.endsWith('/login')) path = '/login';
-  else if (path.endsWith('/logout')) path = '/logout';
-  else if (path.endsWith('/events')) path = '/events';
-  else if (path.endsWith('/users')) path = '/users';
-  else if (path.includes('/events/')) path = '/events/' + path.split('/events/').pop();
-  else if (path.includes('/users/')) path = '/users/' + path.split('/users/').pop();
-
-  // 3. Handle CORS Preflight
-  if (httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers: HEADERS, body: '' };
-  }
-
-  const body = event.body ? JSON.parse(event.body) : {};
-
   try {
+    // 1. Normalize Event Data (Handles both REST API v1 and HTTP API v2)
+    const httpMethod = event.httpMethod || event.requestContext?.http?.method;
+    
+    // 2. Handle CORS Preflight immediately
+    if (httpMethod === 'OPTIONS') {
+      return { statusCode: 200, headers: HEADERS, body: '' };
+    }
+
+    let path = event.path || event.rawPath || "";
+    
+    // 3. Normalize Path (Remove stage prefix if present)
+    if (path.endsWith('/login')) path = '/login';
+    else if (path.endsWith('/logout')) path = '/logout';
+    else if (path.endsWith('/events')) path = '/events';
+    else if (path.endsWith('/users')) path = '/users';
+    else if (path.includes('/events/')) path = '/events/' + path.split('/events/').pop();
+    else if (path.includes('/users/')) path = '/users/' + path.split('/users/').pop();
+
+    // 4. Parse Body Safely
+    /** @type {any} */
+    let body = {};
+    if (event.body) {
+      try {
+        body = JSON.parse(event.body);
+      } catch (e) {
+        console.error("Failed to parse body:", e);
+        // Continue with empty body, or return 400 if body is required
+      }
+    }
+
     // --- LOGIN ROUTE ---
     if (path === '/login' && httpMethod === 'POST') {
       const { username, password } = body;
@@ -118,11 +130,12 @@ export const handler = async (event) => {
     return { statusCode: 404, headers: HEADERS, body: JSON.stringify({ error: `Route not found: ${path}` }) };
 
   } catch (err) {
-    console.error("Backend Error:", err);
+    console.error("Backend Critical Error:", err);
+    // CRITICAL: Always return headers even on crash, so browser sees the 500
     return { 
       statusCode: 500, 
       headers: HEADERS, 
-      body: JSON.stringify({ error: err.message }) 
+      body: JSON.stringify({ error: err.message || "Internal Server Error" }) 
     };
   }
 };
