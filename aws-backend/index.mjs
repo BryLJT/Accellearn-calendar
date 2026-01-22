@@ -62,7 +62,7 @@ export const handler = async (event) => {
       try {
         let bodyStr = ev.body;
         if (ev.isBase64Encoded) {
-          // Use global Buffer
+          // Use imported Buffer
           bodyStr = Buffer.from(ev.body, 'base64').toString('utf-8');
         }
         return JSON.parse(bodyStr);
