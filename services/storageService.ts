@@ -36,7 +36,7 @@ if (isUsingMock) {
 
 async function apiFetch(endpoint: string, options: RequestInit = {}) {
   // Normalize Base URL
-  const baseUrl = API_BASE_URL.replace(/\/$/, '');
+  const baseUrl = API_BASE_URL.replace(/\/$/, '').trim();
   
   // SINGLE ENTRY POINT STRATEGY:
   // Instead of appending paths (e.g. /login), we pass the route as a query parameter.
@@ -74,8 +74,14 @@ async function apiFetch(endpoint: string, options: RequestInit = {}) {
     }
 
     return response.json();
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Fetch Failed for ${url}:`, error);
+    
+    // Provide a more helpful error message for "Failed to fetch" (CORS/Network)
+    if (error.message === 'Failed to fetch') {
+      throw new Error("Network Error: Could not connect to AWS. Check API Gateway URL and CORS configuration.");
+    }
+    
     throw error;
   }
 }

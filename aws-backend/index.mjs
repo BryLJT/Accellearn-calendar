@@ -2,7 +2,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, ScanCommand, PutCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import { Buffer } from "buffer";
 
-// Initialize outside handler for connection reuse, but handle potential env errors gracefully
+// Initialize outside handler for connection reuse
 let docClient;
 try {
   const client = new DynamoDBClient({});
@@ -11,7 +11,7 @@ try {
   console.error("Failed to initialize DynamoDB Client", e);
 }
 
-// Table Names - Updated to match your specific tables
+// Table Names
 const TABLES = {
   EVENTS: "accellearn_calendar",
   USERS: "accellearn_users_table"
@@ -27,17 +27,17 @@ const HEADERS = {
 export const handler = async (event) => {
   console.log("Received event:", JSON.stringify(event, null, 2));
 
-  // Fail fast if client didn't init
-  if (!docClient) {
-    console.error("DynamoDB Client not initialized");
-    return {
-      statusCode: 500,
-      headers: HEADERS,
-      body: JSON.stringify({ error: "Database Client Initialization Failed. Check AWS Permissions." })
-    };
-  }
-
   try {
+    // Fail fast if client didn't init
+    if (!docClient) {
+      console.error("DynamoDB Client not initialized");
+      return {
+        statusCode: 500,
+        headers: HEADERS,
+        body: JSON.stringify({ error: "Database Client Initialization Failed. Check AWS Permissions." })
+      };
+    }
+
     const httpMethod = event.httpMethod || event.requestContext?.http?.method;
     let path = event.queryStringParameters?.route || event.path || event.rawPath || "";
     
@@ -51,19 +51,27 @@ export const handler = async (event) => {
 
     console.log(`Processing request: ${httpMethod} ${path}`);
 
+    // Handle Preflight OPTIONS
+    if (httpMethod === 'OPTIONS') {
+      return { statusCode: 200, headers: HEADERS, body: '' };
+    }
+
     // Parse Body
-    let body = /** @type {any} */ ({});
-    if (event.body) {
+    const parseBody = (ev) => {
+      if (!ev.body) return {};
       try {
-        let bodyStr = event.body;
-        if (event.isBase64Encoded) {
-          bodyStr = Buffer.from(event.body, 'base64').toString('utf-8');
+        let bodyStr = ev.body;
+        if (ev.isBase64Encoded) {
+          bodyStr = Buffer.from(ev.body, 'base64').toString('utf-8');
         }
-        body = JSON.parse(bodyStr);
+        return JSON.parse(bodyStr);
       } catch (e) {
         console.error("Failed to parse body:", e);
+        return {};
       }
-    }
+    };
+
+    const body = parseBody(event);
 
     // --- HEALTH CHECK ---
     if (path === '/' || path === '') {
@@ -82,7 +90,6 @@ export const handler = async (event) => {
       console.log(`Found ${users.length} users in database.`);
 
       // 2. SPECIAL CASE: First Run / Empty DB
-      // If the DB has 0 users, we AUTOMATICALLY create the admin user so you can log in.
       if (users.length === 0) {
         console.log("Database is empty. Checking if this is the initial admin login...");
         if (username === 'admin' && password === 'admin') {
@@ -96,23 +103,17 @@ export const handler = async (event) => {
                avatarUrl: 'https://picsum.photos/seed/admin/200' 
            };
            await docClient.send(new PutCommand({ TableName: TABLES.USERS, Item: defaultAdmin }));
-           console.log("Default admin created successfully.");
            return { statusCode: 200, headers: HEADERS, body: JSON.stringify(defaultAdmin) };
-        } else {
-           console.log("Empty DB, but credentials were not admin/admin.");
         }
       }
 
-      // 3. Normal Login Check
       const user = users.find(u => u.username === username && u.password === password);
 
       if (user) {
-        console.log("Login successful.");
         return { statusCode: 200, headers: HEADERS, body: JSON.stringify(user) };
       }
       
-      console.log("Login failed: Invalid credentials.");
-      return { statusCode: 401, headers: HEADERS, body: JSON.stringify({ error: "Invalid credentials. If this is your first time, use admin/admin." }) };
+      return { statusCode: 401, headers: HEADERS, body: JSON.stringify({ error: "Invalid credentials. Try admin/admin if first time." }) };
     }
 
     // --- EVENTS ROUTES ---
@@ -166,6 +167,7 @@ export const handler = async (event) => {
 
   } catch (err) {
     console.error("Backend Critical Error:", err);
+    // Ensure we return CORS headers even on error
     return { 
       statusCode: 500, 
       headers: HEADERS, 
