@@ -121,7 +121,7 @@ export const handler = async (event) => {
         return { statusCode: 200, headers: HEADERS, body: JSON.stringify(user) };
       }
       
-      return { statusCode: 401, headers: HEADERS, body: JSON.stringify({ error: "Invalid credentials. Try admin/admin if first time." }) };
+      return { statusCode: 401, headers: HEADERS, body: JSON.stringify({ error: "Invalid credentials." }) };
     }
 
     // --- EVENTS ROUTES ---
