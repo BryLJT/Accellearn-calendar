@@ -59,9 +59,13 @@ const App: React.FC = () => {
   // Sync Logic
   useEffect(() => {
     if (!user) return;
+    // COST OPTIMIZATION:
+    // We increased the interval from 15s to 120s (2 minutes).
+    // This reduces AWS Lambda requests by 8x, allowing significantly more users on the Free Tier.
     const interval = setInterval(() => {
       refreshData();
-    }, isCloudMode ? 15000 : 30000); // Slower polling to be kind to serverless limits
+    }, isCloudMode ? 120000 : 30000); 
+    
     return () => clearInterval(interval);
   }, [user, refreshData, isCloudMode]);
 
@@ -299,6 +303,7 @@ const App: React.FC = () => {
               onAddEvent={handleAddEvent}
               onUpdateEvent={handleAddEvent}
               onDeleteEvent={handleDeleteEvent}
+              onRefresh={() => refreshData(true)}
             />
           )}
           {activeTab === 'users' && user.role === UserRole.ADMIN && (

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { CalendarEvent, User, UserRole, RecurrenceType } from '../types';
-import { ChevronLeft, ChevronRight, Clock, Plus, Wand2, Trash2, Users, Calendar as CalendarIcon, Palette, Repeat, Tag, Filter, X, Download, Share2, Link as LinkIcon, Check, Info, Pencil, AlignLeft } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Plus, Wand2, Trash2, Users, Calendar as CalendarIcon, Palette, Repeat, Tag, Filter, X, Download, Share2, Link as LinkIcon, Check, Info, Pencil, AlignLeft, RefreshCw } from 'lucide-react';
 import { Button } from './Button';
 import { Modal } from './Modal';
 import { parseEventWithAI } from '../services/geminiService';
@@ -13,6 +13,7 @@ interface EventCalendarProps {
   onAddEvent: (event: CalendarEvent) => void;
   onUpdateEvent: (event: CalendarEvent) => void;
   onDeleteEvent: (eventId: string) => void;
+  onRefresh: () => void;
 }
 
 const COLOR_OPTIONS = [
@@ -31,7 +32,8 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
   users, 
   onAddEvent,
   onUpdateEvent,
-  onDeleteEvent
+  onDeleteEvent,
+  onRefresh
 }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -225,6 +227,10 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
             <p className="text-slate-500">{currentUser.role === UserRole.ADMIN ? 'Manage team schedule' : 'Your personal dashboard'}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" onClick={onRefresh} title="Force Refresh">
+              <RefreshCw size={16} className="mr-2 text-slate-500" />
+              Refresh
+            </Button>
             <Button variant="secondary" onClick={() => setIsShareModalOpen(true)}>
               <Share2 size={16} className="mr-2 text-slate-500" />
               Sync Cal
