@@ -11,7 +11,7 @@ const TABLES = {
 };
 
 const HEADERS = {
-  "Access-Control-Allow-Origin": "*", // Allow Amplify to hit this
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "Content-Type",
   "Access-Control-Allow-Methods": "OPTIONS,POST,GET,DELETE"
 };
@@ -19,22 +19,33 @@ const HEADERS = {
 export const handler = async (event) => {
   console.log("Received event:", JSON.stringify(event, null, 2));
 
-  // 1. Handle CORS Preflight (Browser checking permission)
-  if (event.httpMethod === 'OPTIONS') {
+  // 1. Normalize Event Data (Handles both REST API v1 and HTTP API v2)
+  const httpMethod = event.httpMethod || event.requestContext?.http?.method;
+  let path = event.path || event.rawPath || "";
+  
+  // 2. Normalize Path (Remove stage prefix if present, e.g., /default/login -> /login)
+  // This ensures the code works regardless of your API Gateway stage configuration.
+  if (path.endsWith('/login')) path = '/login';
+  else if (path.endsWith('/logout')) path = '/logout';
+  else if (path.endsWith('/events')) path = '/events';
+  else if (path.endsWith('/users')) path = '/users';
+  else if (path.includes('/events/')) path = '/events/' + path.split('/events/').pop();
+  else if (path.includes('/users/')) path = '/users/' + path.split('/users/').pop();
+
+  // 3. Handle CORS Preflight
+  if (httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers: HEADERS, body: '' };
   }
 
-  const { httpMethod, path, body } = event;
-  const data = body ? JSON.parse(body) : {};
+  const body = event.body ? JSON.parse(event.body) : {};
 
   try {
     // --- LOGIN ROUTE ---
     if (path === '/login' && httpMethod === 'POST') {
-      const { username, password } = data;
-      // Scan users to find match (Simple auth for small teams)
+      const { username, password } = body;
       const command = new ScanCommand({ TableName: TABLES.USERS });
       const response = await docClient.send(command);
-      const user = response.Items.find(u => u.username === username && u.password === password);
+      const user = response.Items?.find(u => u.username === username && u.password === password);
 
       if (user) {
         return { statusCode: 200, headers: HEADERS, body: JSON.stringify(user) };
@@ -50,14 +61,12 @@ export const handler = async (event) => {
         return { statusCode: 200, headers: HEADERS, body: JSON.stringify(response.Items || []) };
       }
       if (httpMethod === 'POST') {
-        // 'data' is the CalendarEvent object
-        const command = new PutCommand({ TableName: TABLES.EVENTS, Item: data });
+        const command = new PutCommand({ TableName: TABLES.EVENTS, Item: body });
         await docClient.send(command);
         return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ success: true }) };
       }
     }
 
-    // Handle /events/{id} for DELETE
     if (path.startsWith('/events/') && httpMethod === 'DELETE') {
       const id = path.split('/').pop();
       const command = new DeleteCommand({ TableName: TABLES.EVENTS, Key: { id } });
@@ -71,7 +80,7 @@ export const handler = async (event) => {
         const command = new ScanCommand({ TableName: TABLES.USERS });
         const response = await docClient.send(command);
         
-        // If no users exist, create default Admin (Bootstrap)
+        // Bootstrap Default Admin if empty
         if (!response.Items || response.Items.length === 0) {
            const defaultAdmin = { 
              id: 'admin-1', 
@@ -88,7 +97,7 @@ export const handler = async (event) => {
         return { statusCode: 200, headers: HEADERS, body: JSON.stringify(response.Items) };
       }
       if (httpMethod === 'POST') {
-        const command = new PutCommand({ TableName: TABLES.USERS, Item: data });
+        const command = new PutCommand({ TableName: TABLES.USERS, Item: body });
         await docClient.send(command);
         return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ success: true }) };
       }
@@ -106,7 +115,7 @@ export const handler = async (event) => {
       return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ success: true }) };
     }
 
-    return { statusCode: 404, headers: HEADERS, body: JSON.stringify({ error: "Route not found" }) };
+    return { statusCode: 404, headers: HEADERS, body: JSON.stringify({ error: `Route not found: ${path}` }) };
 
   } catch (err) {
     console.error("Backend Error:", err);
