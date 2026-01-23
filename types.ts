@@ -26,8 +26,9 @@ export interface CalendarEvent {
   endTime: string; // HH:mm
   taggedUserIds: string[];
   createdBy: string;
-  adminColor?: string;
-  userColor?: string;
+  color?: string; // Unified color field
+  adminColor?: string; // Deprecated
+  userColor?: string; // Deprecated
   recurrence?: RecurrenceType;
   recurrenceEndsOn?: string; // ISO Date YYYY-MM-DD
   exceptionDates?: string[]; // Array of ISO Date strings

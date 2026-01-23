@@ -65,8 +65,7 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
     startTime: '09:00',
     endTime: '10:00',
     taggedUserIds: [],
-    adminColor: 'purple',
-    userColor: 'purple',
+    color: 'purple',
     recurrence: 'none',
     tags: [],
     date: dateStr || new Date().toISOString().split('T')[0]
@@ -201,7 +200,8 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
       // so the user edits THAT day, not the original series start date.
       setNewEvent({ 
         ...originalEvent,
-        date: selectedEvent.date // Pre-fill the form with the clicked date
+        date: selectedEvent.date, // Pre-fill the form with the clicked date
+        color: originalEvent.color || originalEvent.adminColor || originalEvent.userColor || 'purple' // Map legacy color, including userColor
       });
       setOriginalInstanceDate(selectedEvent.date); // Track which instance was clicked
       setSelectedEvent(null);
@@ -366,8 +366,7 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
       endTime: newEvent.endTime!,
       taggedUserIds: newEvent.taggedUserIds || [],
       createdBy: newEvent.createdBy || currentUser.id,
-      adminColor: newEvent.adminColor || 'purple',
-      userColor: newEvent.userColor || 'purple',
+      color: newEvent.color || 'purple',
       recurrence: newEvent.recurrence || 'none',
       tags: newEvent.tags || [],
       // Preserve existing recurrence data if editing, unless overwritten
@@ -425,7 +424,8 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
   };
 
   const getEventStyle = (event: CalendarEvent) => {
-    const colorKey = currentUser.role === UserRole.ADMIN ? (event.adminColor || 'purple') : (event.userColor || 'purple');
+    // Consolidated color logic: Use event.color first, fallback to legacy adminColor/userColor, default to purple
+    const colorKey = event.color || event.adminColor || event.userColor || 'purple';
     return (COLOR_OPTIONS.find(c => c.id === colorKey) || COLOR_OPTIONS[0]).class;
   };
 
@@ -780,19 +780,15 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
                   <button
                     key={color.id}
                     type="button"
-                    onClick={() => setNewEvent({
-                      ...newEvent, 
-                      adminColor: currentUser.role === UserRole.ADMIN ? color.id : newEvent.adminColor,
-                      userColor: currentUser.role === UserRole.USER ? color.id : newEvent.userColor
-                    })}
+                    onClick={() => setNewEvent({ ...newEvent, color: color.id })}
                     className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${color.class} ${
-                      (currentUser.role === UserRole.ADMIN ? newEvent.adminColor : newEvent.userColor) === color.id 
+                      newEvent.color === color.id 
                         ? 'ring-2 ring-offset-2 ring-purple-500 border-purple-500 scale-110' 
                         : 'border-transparent'
                     }`}
                     title={color.label}
                   >
-                    {(currentUser.role === UserRole.ADMIN ? newEvent.adminColor : newEvent.userColor) === color.id && <Check size={14} />}
+                    {newEvent.color === color.id && <Check size={14} />}
                   </button>
                 ))}
               </div>
