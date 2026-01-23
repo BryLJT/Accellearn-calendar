@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { CalendarEvent, User, UserRole, RecurrenceType } from '../types';
-import { ChevronLeft, ChevronRight, Clock, Plus, Wand2, Trash2, Users, Calendar as CalendarIcon, Palette, Repeat, Tag, Filter, X, Download, Share2, Link as LinkIcon, Check, Info, Pencil, AlignLeft, RefreshCw, CalendarOff, ArrowRightToLine } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Plus, Wand2, Trash2, Users, Calendar as CalendarIcon, Palette, Repeat, Tag, Filter, X, Download, Share2, Link as LinkIcon, Check, Info, Pencil, AlignLeft, RefreshCw, CalendarOff, ArrowRightToLine, Split } from 'lucide-react';
 import { Button } from './Button';
 import { Modal } from './Modal';
 import { parseEventWithAI } from '../services/geminiService';
@@ -45,6 +45,11 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
   // Recurrence Deletion State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [recurrenceInstanceToDelete, setRecurrenceInstanceToDelete] = useState<{id: string, date: string} | null>(null);
+
+  // Recurrence Edit State
+  const [isEditRecurrenceModalOpen, setIsEditRecurrenceModalOpen] = useState(false);
+  const [pendingEditEvent, setPendingEditEvent] = useState<CalendarEvent | null>(null);
+  const [originalInstanceDate, setOriginalInstanceDate] = useState<string>('');
   
   const [filterTags, setFilterTags] = useState<string[]>([]);
   const [filterUserIds, setFilterUserIds] = useState<string[]>([]);
@@ -88,38 +93,68 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
 
   const processedEvents = useMemo(() => {
     let result: CalendarEvent[] = [];
-    const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1; // 1-12
 
     events.forEach(event => {
+      // 1. NON-RECURRING EVENTS
       if (!event.recurrence || event.recurrence === 'none') {
-        if (event.date.startsWith(`${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`)) {
+        // Simple string check is faster and safer than Date objects for basic filtering
+        const [evtYear, evtMonth] = event.date.split('-').map(Number);
+        if (evtYear === currentYear && evtMonth === currentMonth) {
           result.push(event);
         }
         return;
       }
 
-      const eventStartDate = new Date(event.date);
-      if (eventStartDate > monthEnd) return;
+      // 2. RECURRING EVENTS
+      // We manually generate occurrences to avoid Timezone issues with the Date object.
+      // We rely on YYYY-MM-DD string comparisons.
+      
+      const [startYear, startMonth, startDay] = event.date.split('-').map(Number);
+      
+      // Optimization: If the event starts after this month, skip it entirely
+      // (Simple check: if startYear > currentYear or (startYear == currentYear and startMonth > currentMonth))
+      if (startYear > currentYear || (startYear === currentYear && startMonth > currentMonth)) {
+        return;
+      }
 
+      // Loop through every day of the current view
       for (let day = 1; day <= days; day++) {
-        const checkDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
-        if (checkDate < eventStartDate) continue;
+        // Construct the date string for the cell we are checking
+        const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        
+        // Check 1: Is this date before the start date? (String comparison works for ISO dates)
+        if (dateStr < event.date) continue;
 
-        const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
-        // Check for exceptions (Deleted single instances)
+        // Check 2: Is this date excluded?
         if (event.exceptionDates?.includes(dateStr)) continue;
 
-        // Check for recurrence end date (Deleted future instances)
+        // Check 3: Is this date after the recurrence ends?
         if (event.recurrenceEndsOn && dateStr > event.recurrenceEndsOn) continue;
 
+        // Check 4: Does it match the pattern?
         let isMatch = false;
-        if (event.recurrence === 'daily') isMatch = true;
-        else if (event.recurrence === 'weekly' && checkDate.getDay() === eventStartDate.getDay()) isMatch = true;
-        else if (event.recurrence === 'monthly' && checkDate.getDate() === eventStartDate.getDate()) isMatch = true;
+        
+        // Create Date objects ONLY for day-of-week/day-of-month math
+        // We use noon to avoid DST switching weirdness
+        const cellDateObj = new Date(currentYear, currentMonth - 1, day, 12, 0, 0);
+        const startDateObj = new Date(startYear, startMonth - 1, startDay, 12, 0, 0);
+
+        if (event.recurrence === 'daily') {
+          isMatch = true;
+        } else if (event.recurrence === 'weekly') {
+          if (cellDateObj.getDay() === startDateObj.getDay()) isMatch = true;
+        } else if (event.recurrence === 'monthly') {
+          if (day === startDay) isMatch = true;
+        }
 
         if (isMatch) {
-          result.push({ ...event, date: dateStr, id: `${event.id}_${dateStr}` });
+          result.push({ 
+            ...event, 
+            date: dateStr, 
+            id: `${event.id}_${dateStr}` // composite ID for rendering
+          });
         }
       }
     });
@@ -137,7 +172,9 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
 
   const getEventsForDay = (day: number) => {
     const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    return filteredEvents.filter(e => e.date === dateStr);
+    return filteredEvents
+      .filter(e => e.date === dateStr)
+      .sort((a, b) => a.startTime.localeCompare(b.startTime)); // Time Sort
   };
 
   const handleDayClick = (day: number) => {
@@ -154,12 +191,19 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
 
   const handleEditEvent = () => {
     if (!selectedEvent) return;
+    
     // Extract original ID in case it's a recurrence instance
     const baseId = selectedEvent.id.split('_')[0];
     const originalEvent = events.find(e => e.id === baseId);
     
     if (originalEvent) {
-      setNewEvent({ ...originalEvent });
+      // Important: We populate the form with the instance's specific date
+      // so the user edits THAT day, not the original series start date.
+      setNewEvent({ 
+        ...originalEvent,
+        date: selectedEvent.date // Pre-fill the form with the clicked date
+      });
+      setOriginalInstanceDate(selectedEvent.date); // Track which instance was clicked
       setSelectedEvent(null);
       setIsAddModalOpen(true);
     }
@@ -227,6 +271,80 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
     setRecurrenceInstanceToDelete(null);
   };
 
+  // --- RECURRENCE EDIT LOGIC ---
+
+  const handleEditThisOnly = () => {
+    if (!pendingEditEvent || !originalInstanceDate) return;
+    
+    // 1. Find the original event
+    const baseId = pendingEditEvent.id!.split('_')[0];
+    const original = events.find(e => e.id === baseId);
+    if (!original) return;
+
+    // 2. Add exception to original event for this date
+    const updatedOriginal = {
+      ...original,
+      exceptionDates: [...(original.exceptionDates || []), originalInstanceDate]
+    };
+    onUpdateEvent(updatedOriginal);
+
+    // 3. Create NEW single event for this date with the new data
+    const newSingleEvent: CalendarEvent = {
+      ...pendingEditEvent,
+      id: crypto.randomUUID(), // New ID
+      recurrence: 'none', // Not recurring
+      date: pendingEditEvent.date! // Use the date from the form (user might have moved it)
+    } as CalendarEvent;
+    
+    onAddEvent(newSingleEvent);
+    
+    // Cleanup
+    setIsEditRecurrenceModalOpen(false);
+    setPendingEditEvent(null);
+  };
+
+  const handleEditFuture = () => {
+    if (!pendingEditEvent || !originalInstanceDate) return;
+
+    // 1. Find the original event
+    const baseId = pendingEditEvent.id!.split('_')[0];
+    const original = events.find(e => e.id === baseId);
+    if (!original) return;
+
+    // Edge case: If editing the very first start date, just update the original
+    if (original.date === originalInstanceDate) {
+      onUpdateEvent(pendingEditEvent as CalendarEvent);
+      setIsEditRecurrenceModalOpen(false);
+      setPendingEditEvent(null);
+      return;
+    }
+
+    // 2. Stop the old series yesterday
+    const dateObj = new Date(originalInstanceDate);
+    dateObj.setDate(dateObj.getDate() - 1);
+    const dayBefore = dateObj.toISOString().split('T')[0];
+
+    const updatedOriginal = {
+      ...original,
+      recurrenceEndsOn: dayBefore
+    };
+    onUpdateEvent(updatedOriginal);
+
+    // 3. Start a new series from today
+    const newSeriesEvent: CalendarEvent = {
+      ...pendingEditEvent,
+      id: crypto.randomUUID(),
+      // Keep recurrence settings from the form
+      // date is already set to the new start date from the form
+    } as CalendarEvent;
+    
+    onAddEvent(newSeriesEvent);
+
+    // Cleanup
+    setIsEditRecurrenceModalOpen(false);
+    setPendingEditEvent(null);
+  };
+
   const handleAiGenerate = async () => {
     if (!aiPrompt.trim()) return;
     setIsAiLoading(true);
@@ -252,12 +370,24 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
       userColor: newEvent.userColor || 'purple',
       recurrence: newEvent.recurrence || 'none',
       tags: newEvent.tags || [],
-      // Preserve existing recurrence data if editing
+      // Preserve existing recurrence data if editing, unless overwritten
       recurrenceEndsOn: newEvent.recurrenceEndsOn,
       exceptionDates: newEvent.exceptionDates
     };
 
     if (newEvent.id) {
+      // Check if this is a recurring event update
+      const baseId = newEvent.id.split('_')[0];
+      const original = events.find(e => e.id === baseId);
+
+      // If it's a recurring event AND it's not 'none'
+      if (original && original.recurrence && original.recurrence !== 'none') {
+        setPendingEditEvent(eventToSave);
+        setIsAddModalOpen(false); // Close the form
+        setIsEditRecurrenceModalOpen(true); // Open the decision modal
+        return;
+      }
+      
       onUpdateEvent(eventToSave);
     } else {
       onAddEvent(eventToSave);
@@ -281,9 +411,6 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
     document.body.removeChild(link);
   };
 
-  // --- CHANGED LOGIC START ---
-  // We now build the URL to point directly to the API Gateway.
-  // Format: API_URL + ?route=/calendar/{userId}/cal.ics
   const getFeedUrl = () => {
     if (!CONFIG.IS_CLOUD) return `${window.location.origin}/local-demo/calendar.ics`;
     const baseUrl = CONFIG.API_URL;
@@ -296,7 +423,6 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
-  // --- CHANGED LOGIC END ---
 
   const getEventStyle = (event: CalendarEvent) => {
     const colorKey = currentUser.role === UserRole.ADMIN ? (event.adminColor || 'purple') : (event.userColor || 'purple');
@@ -375,13 +501,14 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
           ))}
         </div>
         <div className="grid grid-cols-7 auto-rows-fr bg-slate-200 gap-px">
-          {Array.from({ length: firstDay }).map((_, i) => <div key={`empty-${i}`} className="bg-white min-h-[120px]" />)}
+          {/* Calendar cell height increased to 180px */}
+          {Array.from({ length: firstDay }).map((_, i) => <div key={`empty-${i}`} className="bg-white min-h-[180px]" />)}
           {Array.from({ length: days }).map((_, i) => {
             const day = i + 1;
             const dayEvents = getEventsForDay(day);
             const isToday = new Date().toDateString() === new Date(currentDate.getFullYear(), currentDate.getMonth(), day).toDateString();
             return (
-              <div key={day} className={`bg-white min-h-[120px] p-2 transition-colors hover:bg-slate-50 ${currentUser.role === UserRole.ADMIN ? 'cursor-pointer' : ''}`} onClick={() => handleDayClick(day)}>
+              <div key={day} className={`bg-white min-h-[180px] p-2 transition-colors hover:bg-slate-50 ${currentUser.role === UserRole.ADMIN ? 'cursor-pointer' : ''}`} onClick={() => handleDayClick(day)}>
                 <div className={`flex justify-center items-center w-7 h-7 rounded-full text-sm font-medium mb-1 ${isToday ? 'bg-purple-600 text-white' : 'text-slate-700'}`}>{day}</div>
                 <div className="space-y-1">
                   {dayEvents.map(event => (
@@ -459,6 +586,45 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
         </div>
       </Modal>
 
+      {/* Edit Recurrence Modal (New) */}
+      <Modal isOpen={isEditRecurrenceModalOpen} onClose={() => setIsEditRecurrenceModalOpen(false)} title="Edit Repeating Event">
+        <div className="space-y-4">
+          <p className="text-slate-600 text-sm">
+            You are changing a repeating event. How should these changes apply?
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <button 
+              onClick={handleEditThisOnly}
+              className="flex flex-col items-center justify-center p-6 bg-white border-2 border-slate-100 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all group"
+            >
+              <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-3 group-hover:bg-blue-100 transition-colors">
+                <Split size={24} className="text-slate-500 group-hover:text-blue-600" />
+              </div>
+              <h4 className="font-semibold text-slate-900 mb-1">This Event Only</h4>
+              <p className="text-xs text-center text-slate-500">
+                Detach this event from the series. Changes apply only to this specific date.
+              </p>
+            </button>
+
+            <button 
+              onClick={handleEditFuture}
+              className="flex flex-col items-center justify-center p-6 bg-white border-2 border-slate-100 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all group"
+            >
+               <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-3 group-hover:bg-purple-100 transition-colors">
+                <ArrowRightToLine size={24} className="text-slate-500 group-hover:text-purple-600" />
+              </div>
+              <h4 className="font-semibold text-slate-900 mb-1">This and Following</h4>
+              <p className="text-xs text-center text-slate-500">
+                Split the series. Changes apply to this event and all future occurrences.
+              </p>
+            </button>
+          </div>
+          <div className="flex justify-end pt-2">
+            <Button variant="ghost" onClick={() => setIsEditRecurrenceModalOpen(false)}>Cancel</Button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Event Details Modal */}
       <Modal isOpen={!!selectedEvent} onClose={() => setSelectedEvent(null)} title="Event Details">
         {selectedEvent && (
@@ -497,94 +663,144 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
       {/* Add/Edit Event Modal */}
       <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title={newEvent.id ? "Edit Event" : "Schedule Event"}>
         <div className="space-y-6">
-          <div className="bg-gradient-to-r from-purple-50 to-slate-50 p-4 rounded-xl border border-purple-100">
-            <label className="flex items-center text-sm font-semibold text-purple-700 mb-2"><Wand2 size={16} className="mr-2" />AI Assistant</label>
+          <div className="bg-gradient-to-br from-purple-50 to-white p-4 rounded-xl border border-purple-100">
+            <h4 className="text-sm font-semibold text-purple-900 mb-2 flex items-center"><Wand2 size={16} className="mr-2" />AI Assistant</h4>
             <div className="flex gap-2">
-              <input type="text" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="e.g. Design Sync with Jane next Tuesday at 2pm" className="flex-1 px-3 py-2 text-sm border border-purple-200 rounded-lg outline-none bg-white" />
-              <Button onClick={handleAiGenerate} isLoading={isAiLoading} disabled={!aiPrompt}>Fill</Button>
+              <input
+                type="text"
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                placeholder="e.g. Weekly team meeting every Monday at 10am with John..."
+                className="flex-1 px-3 py-2 text-sm border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                onKeyDown={(e) => e.key === 'Enter' && handleAiGenerate()}
+              />
+              <Button onClick={handleAiGenerate} disabled={!aiPrompt.trim()} isLoading={isAiLoading} size="sm">Generate</Button>
             </div>
           </div>
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <input required type="text" value={newEvent.title} onChange={e => setNewEvent({ ...newEvent, title: e.target.value })} placeholder="Event Title" className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none font-medium" />
+              <label className="block text-sm font-medium text-slate-700 mb-1">Event Title</label>
+              <input
+                required
+                type="text"
+                value={newEvent.title}
+                onChange={e => setNewEvent({...newEvent, title: e.target.value})}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none bg-white"
+                placeholder="Meeting Title"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
+                <input
+                  required
+                  type="date"
+                  value={newEvent.date}
+                  onChange={e => setNewEvent({...newEvent, date: e.target.value})}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Recurrence</label>
+                <select
+                  value={newEvent.recurrence}
+                  onChange={e => setNewEvent({...newEvent, recurrence: e.target.value as RecurrenceType})}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none bg-white"
+                >
+                  <option value="none">Does not repeat</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Start Time</label>
+                <input
+                  required
+                  type="time"
+                  value={newEvent.startTime}
+                  onChange={e => setNewEvent({...newEvent, startTime: e.target.value})}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">End Time</label>
+                <input
+                  required
+                  type="time"
+                  value={newEvent.endTime}
+                  onChange={e => setNewEvent({...newEvent, endTime: e.target.value})}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none bg-white"
+                />
+              </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center"><AlignLeft size={14} className="mr-1" />Description</label>
-              <textarea 
-                value={newEvent.description || ''} 
-                onChange={e => setNewEvent({ ...newEvent, description: e.target.value })} 
-                placeholder="Add event details, meeting links, or notes..." 
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none min-h-[80px] text-sm" 
+              <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+              <textarea
+                value={newEvent.description}
+                onChange={e => setNewEvent({...newEvent, description: e.target.value})}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none bg-white h-24 resize-none"
+                placeholder="Add details..."
               />
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
-              <input required type="date" value={newEvent.date} onChange={e => setNewEvent({ ...newEvent, date: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none" />
-              <select value={newEvent.recurrence || 'none'} onChange={e => setNewEvent({ ...newEvent, recurrence: e.target.value as RecurrenceType })} className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none">
-                <option value="none">One-time</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
-              </select>
-            </div>
-            
-            <div className="flex gap-4">
-              <input required type="time" value={newEvent.startTime} onChange={e => setNewEvent({ ...newEvent, startTime: e.target.value })} className="flex-1 px-3 py-2 border border-slate-300 rounded-lg outline-none" />
-              <input required type="time" value={newEvent.endTime} onChange={e => setNewEvent({ ...newEvent, endTime: e.target.value })} className="flex-1 px-3 py-2 border border-slate-300 rounded-lg outline-none" />
-            </div>
-
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Tag Team Members</label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Attendees</label>
               <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 border border-slate-200 rounded-lg bg-slate-50">
-                {users.map(u => (
+                {users.filter(u => u.role !== UserRole.ADMIN).map(u => (
                   <button
                     key={u.id}
                     type="button"
                     onClick={() => {
-                       const current = newEvent.taggedUserIds || [];
-                       const exists = current.includes(u.id);
-                       setNewEvent({
-                         ...newEvent,
-                         taggedUserIds: exists ? current.filter(id => id !== u.id) : [...current, u.id]
-                       });
+                      const current = newEvent.taggedUserIds || [];
+                      const updated = current.includes(u.id)
+                        ? current.filter(id => id !== u.id)
+                        : [...current, u.id];
+                      setNewEvent({...newEvent, taggedUserIds: updated});
                     }}
-                    className={`flex items-center space-x-1 px-2 py-1 rounded-full text-xs border transition-colors ${
-                      (newEvent.taggedUserIds || []).includes(u.id) 
-                        ? 'bg-purple-50 border-purple-200 text-purple-700 ring-1 ring-purple-200' 
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-white hover:border-purple-200'
-                    }`}
+                    className={`flex items-center space-x-1 px-3 py-1.5 rounded-full text-sm border transition-all ${newEvent.taggedUserIds?.includes(u.id) ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-white'}`}
                   >
-                    <img src={u.avatarUrl} alt="" className="w-4 h-4 rounded-full" />
+                    <img src={u.avatarUrl} alt="" className="w-5 h-5 rounded-full" />
                     <span>{u.name}</span>
                   </button>
                 ))}
-                {users.length === 0 && <span className="text-xs text-slate-400 p-1">No users available to tag.</span>}
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Event Color</label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Color Label</label>
               <div className="flex flex-wrap gap-3">
-                {COLOR_OPTIONS.map(option => {
-                  const currentSelection = currentUser.role === UserRole.ADMIN ? newEvent.adminColor : newEvent.userColor;
-                  const isSelected = (currentSelection || 'purple') === option.id;
-                  
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => setNewEvent({ ...newEvent, adminColor: option.id, userColor: option.id })}
-                      className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${option.class.split(' ')[0]} ${isSelected ? 'ring-2 ring-offset-2 ring-purple-500' : 'opacity-70 hover:opacity-100'}`}
-                      title={option.label}
-                    >
-                      {isSelected && <Check size={14} className="text-current opacity-70" />}
-                    </button>
-                  )
-                })}
+                {COLOR_OPTIONS.map(color => (
+                  <button
+                    key={color.id}
+                    type="button"
+                    onClick={() => setNewEvent({
+                      ...newEvent, 
+                      adminColor: currentUser.role === UserRole.ADMIN ? color.id : newEvent.adminColor,
+                      userColor: currentUser.role === UserRole.USER ? color.id : newEvent.userColor
+                    })}
+                    className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${color.class} ${
+                      (currentUser.role === UserRole.ADMIN ? newEvent.adminColor : newEvent.userColor) === color.id 
+                        ? 'ring-2 ring-offset-2 ring-purple-500 border-purple-500 scale-110' 
+                        : 'border-transparent'
+                    }`}
+                    title={color.label}
+                  >
+                    {(currentUser.role === UserRole.ADMIN ? newEvent.adminColor : newEvent.userColor) === color.id && <Check size={14} />}
+                  </button>
+                ))}
               </div>
             </div>
 
             <div className="flex justify-end pt-4 border-t border-slate-100">
-              <Button type="button" variant="ghost" className="mr-2" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
-              <Button type="submit">Save Event</Button>
+              <Button type="button" variant="ghost" onClick={() => setIsAddModalOpen(false)} className="mr-2">Cancel</Button>
+              <Button type="submit">{newEvent.id ? 'Save Changes' : 'Create Event'}</Button>
             </div>
           </form>
         </div>
