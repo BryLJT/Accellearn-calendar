@@ -1,9 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { CalendarEvent, User, UserRole, RecurrenceType } from '../types';
-import { ChevronLeft, ChevronRight, Clock, Plus, Wand2, Trash2, Users, Calendar as CalendarIcon, Palette, Repeat, Tag, Filter, X, Download, Share2, Link as LinkIcon, Check, Info, Pencil, AlignLeft, RefreshCw, CalendarOff, ArrowRightToLine, Split } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Plus, Trash2, Users, Calendar as CalendarIcon, Palette, Repeat, Tag, Filter, X, Download, Share2, Link as LinkIcon, Check, Info, Pencil, RefreshCw, CalendarOff, ArrowRightToLine, Split } from 'lucide-react';
 import { Button } from './Button';
 import { Modal } from './Modal';
-import { parseEventWithAI } from '../services/geminiService';
 import { generateICS } from '../services/icsService';
 import { CONFIG } from '../services/config';
 
@@ -55,9 +54,6 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
   const [filterUserIds, setFilterUserIds] = useState<string[]>([]);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [isAiLoading, setIsAiLoading] = useState(false);
-
   // Helper to reset form state
   const getEmptyEvent = (dateStr?: string): Partial<CalendarEvent> => ({
     title: '',
@@ -98,7 +94,6 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
     events.forEach(event => {
       // 1. NON-RECURRING EVENTS
       if (!event.recurrence || event.recurrence === 'none') {
-        // Simple string check is faster and safer than Date objects for basic filtering
         const [evtYear, evtMonth] = event.date.split('-').map(Number);
         if (evtYear === currentYear && evtMonth === currentMonth) {
           result.push(event);
@@ -107,36 +102,21 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
       }
 
       // 2. RECURRING EVENTS
-      // We manually generate occurrences to avoid Timezone issues with the Date object.
-      // We rely on YYYY-MM-DD string comparisons.
-      
       const [startYear, startMonth, startDay] = event.date.split('-').map(Number);
       
-      // Optimization: If the event starts after this month, skip it entirely
-      // (Simple check: if startYear > currentYear or (startYear == currentYear and startMonth > currentMonth))
       if (startYear > currentYear || (startYear === currentYear && startMonth > currentMonth)) {
         return;
       }
 
-      // Loop through every day of the current view
       for (let day = 1; day <= days; day++) {
-        // Construct the date string for the cell we are checking
         const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         
-        // Check 1: Is this date before the start date? (String comparison works for ISO dates)
         if (dateStr < event.date) continue;
-
-        // Check 2: Is this date excluded?
         if (event.exceptionDates?.includes(dateStr)) continue;
-
-        // Check 3: Is this date after the recurrence ends?
         if (event.recurrenceEndsOn && dateStr > event.recurrenceEndsOn) continue;
 
-        // Check 4: Does it match the pattern?
         let isMatch = false;
         
-        // Create Date objects ONLY for day-of-week/day-of-month math
-        // We use noon to avoid DST switching weirdness
         const cellDateObj = new Date(currentYear, currentMonth - 1, day, 12, 0, 0);
         const startDateObj = new Date(startYear, startMonth - 1, startDay, 12, 0, 0);
 
@@ -173,7 +153,7 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
     const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     return filteredEvents
       .filter(e => e.date === dateStr)
-      .sort((a, b) => a.startTime.localeCompare(b.startTime)); // Time Sort
+      .sort((a, b) => a.startTime.localeCompare(b.startTime));
   };
 
   const handleDayClick = (day: number) => {
@@ -191,42 +171,36 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
   const handleEditEvent = () => {
     if (!selectedEvent) return;
     
-    // Extract original ID in case it's a recurrence instance
     const baseId = selectedEvent.id.split('_')[0];
     const originalEvent = events.find(e => e.id === baseId);
     
     if (originalEvent) {
-      // Important: We populate the form with the instance's specific date
-      // so the user edits THAT day, not the original series start date.
       setNewEvent({ 
         ...originalEvent,
-        date: selectedEvent.date, // Pre-fill the form with the clicked date
-        color: originalEvent.color || originalEvent.adminColor || originalEvent.userColor || 'purple' // Map legacy color, including userColor
+        date: selectedEvent.date,
+        color: originalEvent.color || originalEvent.adminColor || originalEvent.userColor || 'purple'
       });
-      setOriginalInstanceDate(selectedEvent.date); // Track which instance was clicked
+      setOriginalInstanceDate(selectedEvent.date);
       setSelectedEvent(null);
       setIsAddModalOpen(true);
     }
   };
 
-  // Logic to handle deleting recurring events
   const handleDeleteClick = () => {
     if (!selectedEvent) return;
     
-    // If not recurring, just delete normally
     if (!selectedEvent.recurrence || selectedEvent.recurrence === 'none') {
       onDeleteEvent(selectedEvent.id);
       setSelectedEvent(null);
       return;
     }
 
-    // If recurring, open the choice modal
     setRecurrenceInstanceToDelete({
-      id: selectedEvent.id.split('_')[0], // Base ID
-      date: selectedEvent.date // Current instance date
+      id: selectedEvent.id.split('_')[0],
+      date: selectedEvent.date
     });
-    setSelectedEvent(null); // Close detail modal
-    setIsDeleteModalOpen(true); // Open delete modal
+    setSelectedEvent(null);
+    setIsDeleteModalOpen(true);
   };
 
   const handleDeleteThisOnly = () => {
@@ -234,7 +208,6 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
     const original = events.find(e => e.id === recurrenceInstanceToDelete.id);
     if (!original) return;
 
-    // Add current date to exceptions
     const updated = {
       ...original,
       exceptionDates: [...(original.exceptionDates || []), recurrenceInstanceToDelete.date]
@@ -249,7 +222,6 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
     const original = events.find(e => e.id === recurrenceInstanceToDelete.id);
     if (!original) return;
 
-    // If deleting the very first instance, just delete the whole event
     if (original.date === recurrenceInstanceToDelete.date) {
       onDeleteEvent(original.id);
       setIsDeleteModalOpen(false);
@@ -257,7 +229,6 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
       return;
     }
 
-    // Otherwise set recurrence end date to the day before
     const dateObj = new Date(recurrenceInstanceToDelete.date);
     dateObj.setDate(dateObj.getDate() - 1);
     const dayBefore = dateObj.toISOString().split('T')[0];
@@ -276,29 +247,25 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
   const handleEditThisOnly = () => {
     if (!pendingEditEvent || !originalInstanceDate) return;
     
-    // 1. Find the original event
     const baseId = pendingEditEvent.id!.split('_')[0];
     const original = events.find(e => e.id === baseId);
     if (!original) return;
 
-    // 2. Add exception to original event for this date
     const updatedOriginal = {
       ...original,
       exceptionDates: [...(original.exceptionDates || []), originalInstanceDate]
     };
     onUpdateEvent(updatedOriginal);
 
-    // 3. Create NEW single event for this date with the new data
     const newSingleEvent: CalendarEvent = {
       ...pendingEditEvent,
-      id: crypto.randomUUID(), // New ID
-      recurrence: 'none', // Not recurring
-      date: pendingEditEvent.date! // Use the date from the form (user might have moved it)
+      id: crypto.randomUUID(),
+      recurrence: 'none',
+      date: pendingEditEvent.date!
     } as CalendarEvent;
     
     onAddEvent(newSingleEvent);
     
-    // Cleanup
     setIsEditRecurrenceModalOpen(false);
     setPendingEditEvent(null);
   };
@@ -306,12 +273,10 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
   const handleEditFuture = () => {
     if (!pendingEditEvent || !originalInstanceDate) return;
 
-    // 1. Find the original event
     const baseId = pendingEditEvent.id!.split('_')[0];
     const original = events.find(e => e.id === baseId);
     if (!original) return;
 
-    // Edge case: If editing the very first start date, just update the original
     if (original.date === originalInstanceDate) {
       onUpdateEvent(pendingEditEvent as CalendarEvent);
       setIsEditRecurrenceModalOpen(false);
@@ -319,7 +284,6 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
       return;
     }
 
-    // 2. Stop the old series yesterday
     const dateObj = new Date(originalInstanceDate);
     dateObj.setDate(dateObj.getDate() - 1);
     const dayBefore = dateObj.toISOString().split('T')[0];
@@ -330,27 +294,15 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
     };
     onUpdateEvent(updatedOriginal);
 
-    // 3. Start a new series from today
     const newSeriesEvent: CalendarEvent = {
       ...pendingEditEvent,
       id: crypto.randomUUID(),
-      // Keep recurrence settings from the form
-      // date is already set to the new start date from the form
     } as CalendarEvent;
     
     onAddEvent(newSeriesEvent);
 
-    // Cleanup
     setIsEditRecurrenceModalOpen(false);
     setPendingEditEvent(null);
-  };
-
-  const handleAiGenerate = async () => {
-    if (!aiPrompt.trim()) return;
-    setIsAiLoading(true);
-    const result = await parseEventWithAI(aiPrompt, users);
-    setIsAiLoading(false);
-    if (result) setNewEvent(prev => ({ ...prev, ...result }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -369,21 +321,18 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
       color: newEvent.color || 'purple',
       recurrence: newEvent.recurrence || 'none',
       tags: newEvent.tags || [],
-      // Preserve existing recurrence data if editing, unless overwritten
       recurrenceEndsOn: newEvent.recurrenceEndsOn,
       exceptionDates: newEvent.exceptionDates
     };
 
     if (newEvent.id) {
-      // Check if this is a recurring event update
       const baseId = newEvent.id.split('_')[0];
       const original = events.find(e => e.id === baseId);
 
-      // If it's a recurring event AND it's not 'none'
       if (original && original.recurrence && original.recurrence !== 'none') {
         setPendingEditEvent(eventToSave);
-        setIsAddModalOpen(false); // Close the form
-        setIsEditRecurrenceModalOpen(true); // Open the decision modal
+        setIsAddModalOpen(false);
+        setIsEditRecurrenceModalOpen(true);
         return;
       }
       
@@ -393,7 +342,6 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
     }
 
     setIsAddModalOpen(false);
-    setAiPrompt('');
     setNewEvent(getEmptyEvent());
   };
 
@@ -424,7 +372,6 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
   };
 
   const getEventStyle = (event: CalendarEvent) => {
-    // Consolidated color logic: Use event.color first, fallback to legacy adminColor/userColor, default to purple
     const colorKey = event.color || event.adminColor || event.userColor || 'purple';
     return (COLOR_OPTIONS.find(c => c.id === colorKey) || COLOR_OPTIONS[0]).class;
   };
@@ -501,7 +448,6 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
           ))}
         </div>
         <div className="grid grid-cols-7 auto-rows-fr bg-slate-200 gap-px">
-          {/* Calendar cell height increased to 180px */}
           {Array.from({ length: firstDay }).map((_, i) => <div key={`empty-${i}`} className="bg-white min-h-[180px]" />)}
           {Array.from({ length: days }).map((_, i) => {
             const day = i + 1;
@@ -586,7 +532,7 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
         </div>
       </Modal>
 
-      {/* Edit Recurrence Modal (New) */}
+      {/* Edit Recurrence Modal */}
       <Modal isOpen={isEditRecurrenceModalOpen} onClose={() => setIsEditRecurrenceModalOpen(false)} title="Edit Repeating Event">
         <div className="space-y-4">
           <p className="text-slate-600 text-sm">
@@ -663,21 +609,6 @@ export const EventCalendar: React.FC<EventCalendarProps> = ({
       {/* Add/Edit Event Modal */}
       <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title={newEvent.id ? "Edit Event" : "Schedule Event"}>
         <div className="space-y-6">
-          <div className="bg-gradient-to-br from-purple-50 to-white p-4 rounded-xl border border-purple-100">
-            <h4 className="text-sm font-semibold text-purple-900 mb-2 flex items-center"><Wand2 size={16} className="mr-2" />AI Assistant</h4>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={aiPrompt}
-                onChange={(e) => setAiPrompt(e.target.value)}
-                placeholder="e.g. Weekly team meeting every Monday at 10am with John..."
-                className="flex-1 px-3 py-2 text-sm border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none bg-white"
-                onKeyDown={(e) => e.key === 'Enter' && handleAiGenerate()}
-              />
-              <Button onClick={handleAiGenerate} disabled={!aiPrompt.trim()} isLoading={isAiLoading} size="sm">Generate</Button>
-            </div>
-          </div>
-
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Event Title</label>

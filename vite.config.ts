@@ -10,10 +10,6 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
-    define: {
-      // This ensures process.env.API_KEY is replaced with the actual value during the build
-      'process.env.API_KEY': JSON.stringify(env.API_KEY),
-    },
     server: {
       port: 3000
     }

@@ -35,14 +35,3 @@ export interface CalendarEvent {
   tags?: string[];
   type?: 'event'; // Useful for DynamoDB identification
 }
-
-export interface AIEventParseResult {
-  title?: string;
-  date?: string;
-  startTime?: string;
-  endTime?: string;
-  description?: string;
-  taggedUserIds?: string[];
-  recurrence?: RecurrenceType;
-  tags?: string[];
-}
